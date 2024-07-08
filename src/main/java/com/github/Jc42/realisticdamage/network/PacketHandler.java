@@ -28,6 +28,12 @@ public class PacketHandler {
                 .decoder(CPainLevelPacket::new)
                 .consumerMainThread(CPainLevelPacket::handle)
                 .add();
+
+        INSTANCE.messageBuilder(CStopKeyPacket.class, messageID++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(CStopKeyPacket::encode)
+                .decoder(CStopKeyPacket::new)
+                .consumerMainThread(CStopKeyPacket::handle)
+                .add();
     }
 
     public static void sendToServer(Object msg) {

@@ -2,31 +2,41 @@ package com.github.Jc42.realisticdamage;
 
 import com.github.Jc42.realisticdamage.keyboardevent.InputEventHandler;
 import com.github.Jc42.realisticdamage.network.CPainLevelPacket;
+import com.github.Jc42.realisticdamage.network.CStopKeyPacket;
 import com.github.Jc42.realisticdamage.network.PacketHandler;
 import com.github.Jc42.realisticdamage.keyboardevent.PlayerMovementInputEvent;
 import com.mojang.logging.LogUtils;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.Input;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
+import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.ServerPlayerGameMode;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Pose;
+import net.minecraft.world.entity.ai.attributes.Attribute;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.api.distmarker.OnlyIn;
 import net.minecraftforge.client.event.MovementInputUpdateEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.capabilities.RegisterCapabilitiesEvent;
 import net.minecraftforge.event.AttachCapabilitiesEvent;
 import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.entity.living.LivingEntityUseItemEvent;
 import net.minecraftforge.event.entity.living.LivingEvent;
 import net.minecraftforge.event.entity.living.LivingHurtEvent;
 import net.minecraftforge.event.server.ServerStartingEvent;
+import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.LogicalSide;
@@ -37,12 +47,13 @@ import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.util.thread.EffectiveSide;
+import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
+import net.minecraftforge.client.event.InputEvent;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
-import java.util.UUID;
+import javax.swing.text.JTextComponent;
+import java.time.chrono.MinguoEra;
+import java.util.*;
 
 
 // The value here should match an entry in the META-INF/mods.toml file
@@ -52,7 +63,8 @@ public class RealisticDamage
 {
 
     public static final double VANILLA_BASE_SPEED = 0.10000000149011612;
-
+    public static boolean keyPacketHandled = true;
+    public static boolean releasedMovementKeyMidair = false;
     // Define mod id in a common place for everything to reference
     public static final String MODID = "realisticdamage";
     // Directly reference a slf4j logger
@@ -120,11 +132,11 @@ public class RealisticDamage
     }
 
 
-
+    // Run every server tick
     @SubscribeEvent
-    public static void onTick(TickEvent.ServerTickEvent event) {
+    public static void onServerTick(TickEvent.ServerTickEvent event) {
+        MinecraftServer server = event.getServer();
         if (event.phase == TickEvent.Phase.START) {
-            MinecraftServer server = event.getServer();
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
 //                    if(pain.getAdrenalineLevel() > 0) {
@@ -142,75 +154,163 @@ public class RealisticDamage
                         pain.setChronicPainLevel(0);
                     }
 
-                    Objects.requireNonNull(player.getAttribute(Attributes.MOVEMENT_SPEED)).setBaseValue(Math.max(VANILLA_BASE_SPEED - (pain.getChronicPainLevel() * .00111111), 0)); //Lower player speed such that at 90 pain speed = 0
+                    //TODO add an attribute modifier instead of setting directly
+                    //Lower player speed such that at 90 pain speed = 0
+                    Objects.requireNonNull(player.getAttribute(Attributes.MOVEMENT_SPEED)).setBaseValue(Math.max(VANILLA_BASE_SPEED - (pain.getChronicPainLevel() * .00111111), 0));
 
                     PacketHandler.sendToPlayer(new CPainLevelPacket(pain.getChronicPainLevel(), pain.getAdrenalineLevel()), () -> (ServerPlayer) player);
                 });
             }
 
         }
+
+        // Stop player from sprinting after 20 pain
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
+                if(pain.getChronicPainLevel() >= 20) {
+                   if(!player.onGround() && keyPacketHandled){
+                       PacketHandler.sendToPlayer(new CStopKeyPacket("sprint movement"), () -> (ServerPlayer) player);
+                   }
+                   else {
+                       PacketHandler.sendToPlayer(new CStopKeyPacket("sprint"), () -> (ServerPlayer) player);
+                   }
+                   player.setSprinting(false);
+               }
+            });
+
+        }
     }
 
 
-
-
     @SubscribeEvent
-    public void onPlayerMovementInput(PlayerMovementInputEvent event) {
-        Player player = event.getPlayer();
-        Input input = event.getInput();
-
-        // Prevent movement input if the player is in midair and is going faster than base speed
-        // Used to stop the player from jumping to move faster when in pain
-        player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
-            if(!player.onGround()) {
-                double horizontalSpeed = Math.sqrt(Math.pow(player.getDeltaMovement().x, 2) + Math.pow(player.getDeltaMovement().z, 2));
-                double speedLossScale = Math.min((Math.max(pain.getChronicPainLevel() - 20, 0)) / 30, 1); // Used to scale the speed loss from midair such that at <=20 pain there is no effect and >=50 there is no speed bonus
-                LOGGER.debug("!!! speed scale : " + speedLossScale);
-                if (horizontalSpeed * speedLossScale > Objects.requireNonNull(player.getAttribute(Attributes.MOVEMENT_SPEED)).getBaseValue()) {
-                    event.setCanceled(true);
-                    LOGGER.debug("!!! canceled");
-
-                    // Stop movement under a certain value
-                    // This is a hacky way to prevent the little amount of movement that still occurs
-                    // even after canceling which I cant figure out the source of
-
-                    if (Math.abs(player.getDeltaMovement().x) < .03) {
-                        Vec3 velocity = player.getDeltaMovement();
-                        velocity = new Vec3(-player.getDeltaMovement().x * .8, velocity.y, velocity.z);
-                        player.setDeltaMovement(velocity);
-                    }
-                    if (Math.abs(player.getDeltaMovement().z) < .03) {
-                        Vec3 velocity = player.getDeltaMovement();
-                        velocity = new Vec3(velocity.x, velocity.y, -player.getDeltaMovement().z * .8);
-                        player.setDeltaMovement(velocity);
-                    }
-                } else {
-                    event.setCanceled(false);
+    public static void onLivingTick(LivingEvent.LivingTickEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            AttributeInstance movementSpeed = player.getAttribute(Attributes.MOVEMENT_SPEED);
+            if (movementSpeed != null) {
+                Set<AttributeModifier> s = movementSpeed.getModifiers();
+                for (AttributeModifier modifier : movementSpeed.getModifiers()) {
+                    //player.sendSystemMessage(Component.literal("UUID: " + modifier.getId() + " Name: " + modifier.getName()));
                 }
             }
 
-        });
-    }
-
-    //Disable jump boosting
-    @SubscribeEvent
-    public static void onPlayerJump(LivingEvent.LivingJumpEvent event) {
-        if (event.getEntity() instanceof Player) {
-            Player player = (Player) event.getEntity();
-            player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
-                if (pain.getChronicPainLevel() >= 20) {
-                    // Disable sprinting
-                    player.setSprinting(false);
-
-                    // If on server side, sync to client
-                    if (player instanceof ServerPlayer) {
-                        ServerPlayer serverPlayer = (ServerPlayer) player;
-                        serverPlayer.connection.send(new net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket(serverPlayer));
+//            UUID SPRINT_SPEED_BOOST_ID = UUID.fromString("662A6B8D-DA3E-4C1C-8813-96EA6097278D");
+            UUID SPRINT_SPEED_BOOST_ID = UUID.fromString("662a6b8d-da3e-4c1c-8813-96ea6097278d");
+            if (movementSpeed != null) {
+                // Check if the player has high chronic pain
+                player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
+                    if (pain.getChronicPainLevel() >= 20) {
+                        // Remove the sprinting speed modifier
+                        movementSpeed.removeModifier(SPRINT_SPEED_BOOST_ID);
                     }
-                }
-            });
+                });
+            }
         }
     }
+
+    @Mod.EventBusSubscriber(modid = RealisticDamage.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
+    public static class ClientModEventBusEvents {
+
+        @SubscribeEvent
+        public static void onClientSetup(FMLClientSetupEvent event) {
+            // Client-side initialization
+        }
+
+        // Stop player from sprinting after 20 pain
+        @SubscribeEvent
+        @OnlyIn(Dist.CLIENT)
+        public static void onClientTickEvent(TickEvent.ClientTickEvent event) {
+            Minecraft mc = Minecraft.getInstance();
+
+            if (mc.player != null) {
+                mc.player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
+                    if(pain.getChronicPainLevel() >= 20) {
+                        mc.options.keySprint.setDown(false);
+                    }
+                });
+            }
+        }
+
+        @SubscribeEvent
+        @OnlyIn(Dist.CLIENT)
+        public static void onClientTick(TickEvent.ClientTickEvent event) {
+            if (event.phase == TickEvent.Phase.START) {
+                Minecraft mc = Minecraft.getInstance();
+                if (mc.player != null) {
+                    if(mc.player.onGround()){
+                        releasedMovementKeyMidair = false;
+                        keyPacketHandled = true;
+                    }
+                    mc.player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
+
+                        if (pain.getChronicPainLevel() >= 20) {
+                            mc.options.keySprint.setDown(false);
+                            mc.player.setSprinting(false);
+                        }
+                    });
+                }
+            }
+        }
+
+        @SubscribeEvent
+        @OnlyIn(Dist.CLIENT)
+        public static void onKeyInput(InputEvent.Key event) {
+            Minecraft minecraft = Minecraft.getInstance();
+            if (minecraft.player != null) {
+                //minecraft.player.sendSystemMessage(Component.literal("w: " + minecraft.options.keyUp.isDown()));
+            }
+            if (minecraft.player != null) {
+                if (event.getKey() == minecraft.options.keyUp.getKey().getValue()) {
+                    if (!minecraft.player.onGround() && event.getAction() == GLFW.GLFW_PRESS) {
+                        //minecraft.player.sendSystemMessage(Component.literal( "Released false"));
+                        releasedMovementKeyMidair = false;
+                    }
+                    if (!minecraft.player.onGround() && event.getAction() == GLFW.GLFW_RELEASE) {
+                        //minecraft.player.sendSystemMessage(Component.literal( "Released true"));
+                        releasedMovementKeyMidair = true;
+                    }
+                }
+            }
+        }
+    }
+
+//    @SubscribeEvent
+//    public void onPlayerMovementInput(PlayerMovementInputEvent event) {
+//        Player player = event.getPlayer();
+//        Input input = event.getInput();
+//
+//        // Prevent movement input if the player is in midair and is going faster than base speed
+//        // Used to stop the player from jumping to move faster when in pain
+//        player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
+//            if(!player.onGround()) {
+//                double horizontalSpeed = Math.sqrt(Math.pow(player.getDeltaMovement().x, 2) + Math.pow(player.getDeltaMovement().z, 2));
+//                // Used to scale the speed loss from midair such that at <=20 pain there is no effect and >=50 there is no speed bonus
+//                double speedLossScale = Math.min((Math.max(pain.getChronicPainLevel() - 20, 0)) / 30, 1);
+//                LOGGER.debug("!!! speed scale : " + speedLossScale);
+//                if (horizontalSpeed * speedLossScale > Objects.requireNonNull(player.getAttribute(Attributes.MOVEMENT_SPEED)).getBaseValue()) {
+//                    event.setCanceled(true);
+//                    LOGGER.debug("!!! canceled");
+//
+//                    // Stop movement under a certain value
+//                    // This is a hacky way to prevent the little amount of movement that still occurs
+//                    // even after canceling which I cant figure out the source of
+//
+//                    if (Math.abs(player.getDeltaMovement().x) < .03) {
+//                        Vec3 velocity = player.getDeltaMovement();
+//                        velocity = new Vec3(-player.getDeltaMovement().x * .8, velocity.y, velocity.z);
+//                        player.setDeltaMovement(velocity);
+//                    }
+//                    if (Math.abs(player.getDeltaMovement().z) < .03) {
+//                        Vec3 velocity = player.getDeltaMovement();
+//                        velocity = new Vec3(velocity.x, velocity.y, -player.getDeltaMovement().z * .8);
+//                        player.setDeltaMovement(velocity);
+//                    }
+//                } else {
+//                    event.setCanceled(false);
+//                }
+//            }
+//
+//        });
+//    }
 
     @SubscribeEvent
     public static void onAttachCapabilitiesPlayer(AttachCapabilitiesEvent<Entity> attachEvent) {
@@ -232,13 +332,6 @@ public class RealisticDamage
         }
     }
 
-    @Mod.EventBusSubscriber(modid = RealisticDamage.MODID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
-    public static class ClientModEventBusEvents {
-        @SubscribeEvent
-        public static void onClientSetup(FMLClientSetupEvent event) {
-            // Client-side initialization
-        }
-    }
 
 
 
