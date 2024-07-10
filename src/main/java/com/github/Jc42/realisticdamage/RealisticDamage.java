@@ -5,6 +5,7 @@ import com.github.Jc42.realisticdamage.network.CStopKeyPacket;
 import com.github.Jc42.realisticdamage.network.PacketHandler;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
@@ -23,6 +24,7 @@ import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.living.LivingEvent;
 import net.minecraftforge.event.entity.living.LivingHurtEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -76,6 +78,45 @@ public class RealisticDamage
         LOGGER.info("HELLO FROM COMMON SETUP");
         event.enqueueWork(PacketHandler::register);
     }
+
+
+    //region Make pain persistent and TODO apply respawn pain
+
+    //Copy pain data from old player to cloned player, e.g. respawning, switching dimensions, etc
+    @SubscribeEvent
+    public static void onPlayerCloned(PlayerEvent.Clone event) {
+        if (event.isWasDeath()) {
+            //TODO implement respawn pain to stop players commiting suicide to avoid pain debuffs
+            return;
+        }
+
+        event.getOriginal().getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(oldStore -> {
+            event.getEntity().getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(newStore -> {
+                newStore.deserializeNBT(oldStore.serializeNBT());
+            });
+        });
+    }
+
+    //Serializes the player's pain to be saved when the player saves the game
+    @SubscribeEvent
+    public static void onPlayerSave(PlayerEvent.SaveToFile event) {
+        event.getEntity().getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(store -> {
+            CompoundTag tag = event.getEntity().getPersistentData();
+            tag.put(RealisticDamage.MODID + "_pain", store.serializeNBT());
+        });
+    }
+
+    //Deserializes the player's pain to be added to the pain capability
+    @SubscribeEvent
+    public static void onPlayerLoad(PlayerEvent.LoadFromFile event) {
+        event.getEntity().getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(store -> {
+            CompoundTag tag = event.getEntity().getPersistentData();
+            if (tag.contains(RealisticDamage.MODID + "_pain")) {
+                store.deserializeNBT(tag.getCompound(RealisticDamage.MODID + "_pain"));
+            }
+        });
+    }
+    //endregion
 
     //Update pain level and send pain packet
     @SubscribeEvent
