@@ -20,18 +20,16 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.capabilities.RegisterCapabilitiesEvent;
 import net.minecraftforge.event.AttachCapabilitiesEvent;
-import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import net.minecraftforge.event.entity.living.LivingEvent;
 import net.minecraftforge.event.entity.living.LivingHurtEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
-import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.config.ModConfig;
-import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import org.lwjgl.glfw.GLFW;
@@ -39,8 +37,6 @@ import org.slf4j.Logger;
 import net.minecraftforge.client.event.InputEvent;
 
 
-import javax.swing.text.JTextComponent;
-import java.time.chrono.MinguoEra;
 import java.util.*;
 
 
@@ -50,7 +46,8 @@ import java.util.*;
 public class RealisticDamage
 {
 
-    public static final double VANILLA_BASE_SPEED = 0.10000000149011612;
+    private static final UUID PAIN_MOVEMENT_SPEED_MODIFIER_ID = UUID.fromString("457fdf9f-c0d0-42be-8e8e-6d4bcb488de5");
+    private static final UUID PAIN_ATTACK_SPEED_MODIFIER_ID = UUID.fromString("27d34546-5822-4fc2-b8ce-58c248410213");
     public static boolean keyPacketHandled = true;
     public static boolean releasedMovementKeyMidair = false;
     public static final String MODID = "realisticdamage";
@@ -59,6 +56,7 @@ public class RealisticDamage
     //Constructor
     public RealisticDamage()
     {
+
         IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
 
         // Register the commonSetup method for modloading
@@ -124,12 +122,12 @@ public class RealisticDamage
         if (event.getEntity() instanceof Player) {
             Player player = (Player) event.getEntity();
             player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
-                pain.addChronicPain(event.getAmount() * 2);
+                pain.addChronicPain(event.getAmount() * 4);
 
                 if(pain.getChronicPainLevel() < 0) pain.setChronicPainLevel(0);
                 if(pain.getChronicPainLevel() > 100) pain.setChronicPainLevel(100);
 
-                player.sendSystemMessage(Component.literal("You have been hurt!: " + event.getAmount() + ", Chronic Pain: " + pain.getChronicPainLevel() + ", Adrenaline : " + pain.getAdrenalineLevel()));
+                //player.sendSystemMessage(Component.literal("You have been hurt!: " + event.getAmount() + ", Chronic Pain: " + pain.getChronicPainLevel() + ", Adrenaline : " + pain.getAdrenalineLevel()));
 
                 if (player instanceof ServerPlayer) {
                     PacketHandler.sendToPlayer(new CPainLevelPacket(pain.getChronicPainLevel(), pain.getAdrenalineLevel()), () -> (ServerPlayer) player);
@@ -139,7 +137,8 @@ public class RealisticDamage
     }
 
 
-    //Lower pain level with packets and player speed. Also stop player from sprinting and moving midair
+
+    //Lower pain level with packets and lower player speed. Also stop player from sprinting and moving midair
     @SubscribeEvent
     public static void onServerTick(TickEvent.ServerTickEvent event) {
         MinecraftServer server = event.getServer();
@@ -147,7 +146,7 @@ public class RealisticDamage
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
                     if(pain.getChronicPainLevel() > 0) {
-//                        pain.addChronicPain(-.05f); //Chronic pain lowers by 1 per second
+                        pain.addChronicPain(-.05f); //Chronic pain lowers by 1 per second
                         if(pain.getChronicPainLevel() < 0) pain.setChronicPainLevel(0);
                         if(pain.getChronicPainLevel() > 100) pain.setChronicPainLevel(100);
                     }
@@ -157,9 +156,14 @@ public class RealisticDamage
                     }
 
                     //TODO add an attribute modifier instead of setting directly
-                    //Lower player speed such that at 90 pain speed = 0
-                    Objects.requireNonNull(player.getAttribute(Attributes.MOVEMENT_SPEED)).setBaseValue(Math.max(VANILLA_BASE_SPEED - (pain.getChronicPainLevel() * .00111111), 0));
 
+                    //Lower player speed such that at 90 pain speed = 0
+                    updateModifiers(player, pain);
+                    //Objects.requireNonNull(player.getAttribute(Attributes.MOVEMENT_SPEED)).setBaseValue(Math.max(VANILLA_BASE_SPEED - (pain.getChronicPainLevel() * .00111111), 0));
+
+                    //Lower attach speed such that at 90 pain attack speed = 0
+                    //Objects.requireNonNull(player.getAttribute(Attributes.ATTACK_SPEED)).setBaseValue(Math.max(VANILLA_BASE_SPEED - (pain.getChronicPainLevel() * .00111111), 0));
+                    //player.getAttribute()
                     PacketHandler.sendToPlayer(new CPainLevelPacket(pain.getChronicPainLevel(), pain.getAdrenalineLevel()), () -> (ServerPlayer) player);
                 });
             }
@@ -182,6 +186,7 @@ public class RealisticDamage
 
         }
     }
+
 
 
     //Remove the sprint attribute, may be redundant
@@ -267,7 +272,7 @@ public class RealisticDamage
         }
     }
 
-    //Attach the pain capability
+    //Attach the pain capability and add the movement modifier
     @SubscribeEvent
     public static void onAttachCapabilitiesPlayer(AttachCapabilitiesEvent<Entity> attachEvent) {
         if (attachEvent.getObject() instanceof Player) {
@@ -284,6 +289,95 @@ public class RealisticDamage
         public static void registerCapabilities(RegisterCapabilitiesEvent event) {
             event.register(IPainCapability.class);
             LOGGER.debug("Registering pain capabilities");
+        }
+    }
+
+    //Add the player attributes when the player joins the world
+    @SubscribeEvent
+    public static void onEntityJoinWorld(EntityJoinLevelEvent event) {
+        if (event.getEntity() instanceof Player player) {
+            player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
+                AttributeInstance movementSpeed = player.getAttribute(Attributes.MOVEMENT_SPEED);
+                AttributeInstance attackSpeed = player.getAttribute(Attributes.ATTACK_SPEED);
+
+                if (movementSpeed != null) {
+
+                    if (movementSpeed.getModifier(PAIN_MOVEMENT_SPEED_MODIFIER_ID) == null) {
+                        AttributeModifier speedModifier = new AttributeModifier(
+                                PAIN_MOVEMENT_SPEED_MODIFIER_ID,
+                                "Chronic Pain Speed Reduction",
+                                0, // Start with no effect
+                                AttributeModifier.Operation.MULTIPLY_TOTAL
+                        );
+                        movementSpeed.addPermanentModifier(speedModifier);
+                    }
+                }
+
+                if(attackSpeed != null){
+                    if (attackSpeed.getModifier(PAIN_ATTACK_SPEED_MODIFIER_ID) == null) {
+                        AttributeModifier speedModifier = new AttributeModifier(
+                                PAIN_ATTACK_SPEED_MODIFIER_ID,
+                                "Chronic Pain Attack Speed Reduction",
+                                0, // Start with no effect
+                                AttributeModifier.Operation.MULTIPLY_TOTAL
+                        );
+                        attackSpeed.addPermanentModifier(speedModifier);
+                    }
+                }
+
+                updateModifiers(player, pain);
+            });
+        }
+    }
+
+    //Update the players modifiers
+    private static void updateModifiers(Player player, IPainCapability pain) {
+        AttributeInstance movementSpeed = player.getAttribute(Attributes.MOVEMENT_SPEED);
+
+        if (movementSpeed != null) {
+
+            AttributeModifier existingModifier = movementSpeed.getModifier(PAIN_MOVEMENT_SPEED_MODIFIER_ID);
+            if (existingModifier != null) {
+
+                //Lower speed such that 90 pain = 0 speed
+                double modifierValue = -Math.min(.0111111 * pain.getChronicPainLevel(), 1);
+
+                // If the value has changed, remove the old modifier and add a new one with the updated value
+                if (existingModifier.getAmount() != modifierValue) {
+                    movementSpeed.removeModifier(PAIN_MOVEMENT_SPEED_MODIFIER_ID);
+                    AttributeModifier updatedModifier = new AttributeModifier(
+                            PAIN_MOVEMENT_SPEED_MODIFIER_ID,
+                            "Chronic Pain Speed Reduction",
+                            modifierValue,
+                            AttributeModifier.Operation.MULTIPLY_TOTAL
+                    );
+                    movementSpeed.addPermanentModifier(updatedModifier);
+                }
+            }
+        }
+
+        AttributeInstance attackSpeed = player.getAttribute(Attributes.ATTACK_SPEED);
+
+        if (attackSpeed != null) {
+
+            AttributeModifier existingModifier = attackSpeed.getModifier(PAIN_ATTACK_SPEED_MODIFIER_ID);
+            if (existingModifier != null) {
+
+                //Lower speed such that 90 pain = 0 speed
+                double modifierValue = -Math.min(.0111111 * pain.getChronicPainLevel(), 1);
+
+                // If the value has changed, remove the old modifier and add a new one with the updated value
+                if (existingModifier.getAmount() != modifierValue) {
+                    attackSpeed.removeModifier(PAIN_ATTACK_SPEED_MODIFIER_ID);
+                    AttributeModifier updatedModifier = new AttributeModifier(
+                            PAIN_ATTACK_SPEED_MODIFIER_ID,
+                            "Chronic Pain Attack Speed Reduction",
+                            modifierValue,
+                            AttributeModifier.Operation.MULTIPLY_TOTAL
+                    );
+                    attackSpeed.addPermanentModifier(updatedModifier);
+                }
+            }
         }
     }
 }
