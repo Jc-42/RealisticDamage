@@ -15,6 +15,7 @@ import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.BlockItem;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import net.minecraftforge.common.MinecraftForge;
@@ -25,6 +26,10 @@ import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import net.minecraftforge.event.entity.living.LivingEvent;
 import net.minecraftforge.event.entity.living.LivingHurtEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.event.entity.player.PlayerInteractEvent;
+import net.minecraftforge.event.level.BlockEvent;
+import net.minecraftforge.eventbus.api.Event;
+import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.ModLoadingContext;
@@ -52,6 +57,29 @@ public class RealisticDamage
     public static boolean releasedMovementKeyMidair = false;
     public static final String MODID = "realisticdamage";
     private static final Logger LOGGER = LogUtils.getLogger();
+
+    private static long lastActionTime = -1;
+    private static long lastUseTime = -1;
+    private static long lastJumpTime = -1;
+
+    private static boolean cancelAttack = false;
+    private static boolean cancelUse = false;
+
+    //In milliseconds
+    private static final long ACTION_COOLDOWN = 1000;
+    private static float jumpCooldown = 0;
+
+    //region Config Variables
+        //max = the value at which this effect will be when end pain level is reached
+        //min = the value at which this effect will be at start after which it will increase linearly until end is reached
+        //start = the pain level that will trigger this effect
+        //end = the pain level after which the effect will remain constant OR increase to infinity(in the case of jump/sprint)
+
+        private static float maxJumpCooldown = 5000;
+        private static float minJumpCooldown = 500;
+        private static float startJumpCooldown = 30;
+        private static float endJumpCooldown = 90;
+    //endregion
 
     //Constructor
     public RealisticDamage()
@@ -155,10 +183,8 @@ public class RealisticDamage
                         pain.setChronicPainLevel(0);
                     }
 
-                    //TODO add an attribute modifier instead of setting directly
-
-                    //Lower player speed such that at 90 pain speed = 0
                     updateModifiers(player, pain);
+
                     //Objects.requireNonNull(player.getAttribute(Attributes.MOVEMENT_SPEED)).setBaseValue(Math.max(VANILLA_BASE_SPEED - (pain.getChronicPainLevel() * .00111111), 0));
 
                     //Lower attach speed such that at 90 pain attack speed = 0
@@ -170,10 +196,10 @@ public class RealisticDamage
 
         }
 
-        // Stop player from sprinting after 20 pain
+        // Stop player from sprinting after 40 pain
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
-                if(pain.getChronicPainLevel() >= 20) {
+                if(pain.getChronicPainLevel() >= 40) {
                    if(!player.onGround() && keyPacketHandled){
                        PacketHandler.sendToPlayer(new CStopKeyPacket("sprint movement"), () -> (ServerPlayer) player);
                    }
@@ -182,12 +208,83 @@ public class RealisticDamage
                    }
                    player.setSprinting(false);
                }
+                long currentTime = System.currentTimeMillis();
+                if(currentTime - lastJumpTime < jumpCooldown){
+                    PacketHandler.sendToPlayer(new CStopKeyPacket("jump"), () -> (ServerPlayer) player);
+                    player.setJumping(false);
+                }
             });
 
         }
     }
 
+//    @SubscribeEvent
+//    public void onPlayerAttack(LivingAttackEvent event) {
+//        long currentTime = System.currentTimeMillis();
+//        Objects.requireNonNull(event.getSource().getEntity()).sendSystemMessage(Component.literal("Attack " + (currentTime - lastAttackTime)));
+//        if(currentTime - lastAttackTime < ATTACK_COOLDOWN){
+//            event.setCanceled(true);
+//            Objects.requireNonNull(event.getEntity()).sendSystemMessage(Component.literal("Cancel Attack"));
+//        }
+//        else{
+//            lastAttackTime = currentTime;
+//            Objects.requireNonNull(event.getEntity()).sendSystemMessage(Component.literal("Allow Attack"));
+//        }
+//    }
 
+    //Used to stop the event from being allowed and then canceled since this event fires multiple time per click
+    private static boolean allowedLastAction = false;
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
+        // Check if the player is holding a block
+        if (!(event.getItemStack().getItem() instanceof BlockItem)) {
+            return;
+        }
+
+        long currentTime = System.currentTimeMillis();
+
+        if (currentTime - lastActionTime < ACTION_COOLDOWN && !allowedLastAction) {
+            event.setCanceled(true);
+            event.setUseItem(Event.Result.DENY);
+
+        } else {
+            event.setCanceled(false);
+            event.setUseItem(Event.Result.ALLOW);
+
+            if(allowedLastAction) {
+                allowedLastAction = false;
+            }
+            else{
+                allowedLastAction = true;
+            }
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public void onBlockPlace(BlockEvent.EntityPlaceEvent event) {
+        //Reset the action time here because sometimes the RClickBlock code says allowed but then minecraft denys it
+        lastActionTime = System.currentTimeMillis();
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST) //Handle this last
+    public static void onLivingJump(LivingEvent.LivingJumpEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            lastJumpTime = System.currentTimeMillis();
+        }
+    }
+
+
+//    @SubscribeEvent
+//    public void onUseItem(PlayerInteractEvent.RightClickItem event) {
+//        long currentTime = System.currentTimeMillis();
+//        if(currentTime - lastAttackTime < ATTACK_COOLDOWN){
+//            event.setCanceled(true);
+//        }
+//        else{
+//            lastAttackTime = currentTime;
+//        }
+//    }
 
     //Remove the sprint attribute, may be redundant
     @SubscribeEvent
@@ -200,7 +297,7 @@ public class RealisticDamage
             if (movementSpeed != null) {
                 // Check if the player has high chronic pain
                 player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
-                    if (pain.getChronicPainLevel() >= 20) {
+                    if (pain.getChronicPainLevel() >= 40) {
                         // Remove the sprinting speed modifier
                         movementSpeed.removeModifier(SPRINT_SPEED_BOOST_ID);
                     }
@@ -213,7 +310,9 @@ public class RealisticDamage
     @Mod.EventBusSubscriber(modid = RealisticDamage.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
     public static class ClientModEventBusEvents {
 
-        //Stop player from sprinting after 20 pain
+        //Un-press the sprint key when the player shouldn't sprint.
+        //This IS required in addition to the server side code
+        //as Minecraft REALLY doesn't want you to stop the sprint event
         @SubscribeEvent
         @OnlyIn(Dist.CLIENT)
         public static void onClientTickEvent(TickEvent.ClientTickEvent event) {
@@ -221,33 +320,29 @@ public class RealisticDamage
 
             if (mc.player != null) {
                 mc.player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
-                    if(pain.getChronicPainLevel() >= 20) {
+                    if (pain.getChronicPainLevel() >= 40) {
                         mc.options.keySprint.setDown(false);
+                        mc.player.setSprinting(false);
+                    }
+                    if(System.currentTimeMillis() - lastJumpTime < jumpCooldown) {
+                        mc.options.keyJump.setDown(false);
+                        mc.player.setJumping(false);
                     }
                 });
             }
         }
 
-        //Un-press the sprint key when the player shouldn't sprint.
-        //This IS required in addition to the server side code
-        //as Minecraft REALLY doesn't want you to stop the sprint event
+
         @SubscribeEvent
         @OnlyIn(Dist.CLIENT)
         public static void onClientTick(TickEvent.ClientTickEvent event) {
             if (event.phase == TickEvent.Phase.START) {
                 Minecraft mc = Minecraft.getInstance();
                 if (mc.player != null) {
-                    if(mc.player.onGround()){
+                    if (mc.player.onGround()) {
                         releasedMovementKeyMidair = false;
                         keyPacketHandled = true;
                     }
-                    mc.player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
-
-                        if (pain.getChronicPainLevel() >= 20) {
-                            mc.options.keySprint.setDown(false);
-                            mc.player.setSprinting(false);
-                        }
-                    });
                 }
             }
         }
@@ -255,7 +350,7 @@ public class RealisticDamage
         //Determine if the player let go of movement midair
         //Needed to tell if we should resume the movement when the player lands
         //Otherwise the player will keep moving even if they let go
-        @SubscribeEvent
+        @SubscribeEvent (priority = EventPriority.HIGHEST)
         @OnlyIn(Dist.CLIENT)
         public static void onKeyInput(InputEvent.Key event) {
             Minecraft minecraft = Minecraft.getInstance();
@@ -270,6 +365,7 @@ public class RealisticDamage
                 }
             }
         }
+
     }
 
     //Attach the pain capability and add the movement modifier
@@ -330,12 +426,11 @@ public class RealisticDamage
         }
     }
 
-    //Update the players modifiers
+    //Update the players modifiers such as speed, attack speed, jump cooldown, action cooldown, etc.
     private static void updateModifiers(Player player, IPainCapability pain) {
         AttributeInstance movementSpeed = player.getAttribute(Attributes.MOVEMENT_SPEED);
 
         if (movementSpeed != null) {
-
             AttributeModifier existingModifier = movementSpeed.getModifier(PAIN_MOVEMENT_SPEED_MODIFIER_ID);
             if (existingModifier != null) {
 
@@ -379,5 +474,11 @@ public class RealisticDamage
                 }
             }
         }
+
+        //Set the jump Cooldown
+        jumpCooldown = pain.getChronicPainLevel() < startJumpCooldown ? 0 : Math.max(Math.min((((minJumpCooldown - maxJumpCooldown) / (startJumpCooldown - endJumpCooldown)) * (pain.getChronicPainLevel() - endJumpCooldown)) + maxJumpCooldown, maxJumpCooldown), minJumpCooldown);
+        player.sendSystemMessage(Component.literal("jumpCooldown: " + (float)Math.round(jumpCooldown * 100) / 100));
     }
+
+
 }
