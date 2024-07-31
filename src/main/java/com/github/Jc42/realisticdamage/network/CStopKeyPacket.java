@@ -75,12 +75,6 @@ public class CStopKeyPacket {
                         }
                     }
                 }
-                if (packet.key.toLowerCase().contains("attack")) {
-                    //Only cancel if the player isn't in any GUI's
-                    if (minecraft.screen == null) {
-                        minecraft.options.keyAttack.setDown(false);
-                    }
-                }
                 if (packet.key.toLowerCase().contains("use")) {
                     //Only cancel if the player isn't in any GUI's
                     if (minecraft.screen == null) {

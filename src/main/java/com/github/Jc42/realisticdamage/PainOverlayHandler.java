@@ -52,7 +52,7 @@ public class PainOverlayHandler {
         int startX = left - 90;
         int startY = top + 4;
 
-        //int adrenalineWidth = (int)(((double)adrenalineLevel / 100) * 90);
+        int adrenalineWidth = adrenalineLevel > 10 ? 90 : (int)(((double)adrenalineLevel / 10) * 90);
         int chronicWidth = (int)(((double)chronicPainLevel / 100) * 90);
         int backgroundWidth = 90 - chronicWidth;
 
@@ -67,7 +67,7 @@ public class PainOverlayHandler {
         gui.blit(OVERLAY, startX, startY, 0, 5,  chronicWidth, 5);
 
         //Render Filled Adrenaline
-        //gui.blit(OVERLAY, startX , startY + 2, 0,12, adrenalineWidth, 1);
+        gui.blit(OVERLAY, startX , startY, 0,10, adrenalineWidth, 5);
 
 
     }
