@@ -15,10 +15,11 @@ import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.Arrow;
 import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
-import net.minecraftforge.client.event.ScreenEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.capabilities.RegisterCapabilitiesEvent;
 import net.minecraftforge.event.AttachCapabilitiesEvent;
@@ -49,8 +50,7 @@ import java.util.*;
 // The value here should match an entry in the META-INF/mods.toml file
 @Mod(RealisticDamage.MODID)
 @Mod.EventBusSubscriber(modid = RealisticDamage.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
-public class RealisticDamage
-{
+public class RealisticDamage {
 
     private static final UUID PAIN_MOVEMENT_SPEED_MODIFIER_ID = UUID.fromString("457fdf9f-c0d0-42be-8e8e-6d4bcb488de5");
     private static final UUID PAIN_ATTACK_SPEED_MODIFIER_ID = UUID.fromString("27d34546-5822-4fc2-b8ce-58c248410213");
@@ -73,56 +73,48 @@ public class RealisticDamage
     private static float jumpCooldown = 0;
 
     //region Config Variables
-        private static long adrenalineRushCooldown = 60000;
+    private static long adrenalineRushCooldown = 60000;
 
-        //max = the value at which this effect will be when end pain level is reached
-        //min = the value at which this effect will be at start after which it will increase linearly until end is reached
-        //start = the pain level that will trigger this effect
-        //end = the pain level after which the effect will remain constant OR increase to infinity(in the case of jump/sprint)
+    //max = the value at which this effect will be when end pain level is reached
+    //min = the value at which this effect will be at start after which it will increase linearly until end is reached
+    //start = the pain level that will trigger this effect
+    //end = the pain level after which the effect will remain constant OR increase to infinity(in the case of jump/sprint)
 
 
+    private static float maxJumpCooldown = 5000;
+    private static float minJumpCooldown = 700;
+    private static float startJumpCooldown = 30; //Before which it is 0
+    private static float endJumpCooldown = 90; //After which you cannot jump
 
-        private static float maxJumpCooldown = 5000;
-        private static float minJumpCooldown = 700;
-        private static float startJumpCooldown = 30; //Before which it is 0
-        private static float endJumpCooldown = 90; //After which you cannot jump
+    private static float maxMovementSpeedScale = 1;
+    private static float minMovementSpeedScale = 0;
+    private static float startMovementSpeedScale = 0;
+    private static float endMovementSpeedScale = 90;
 
-        private static float maxMovementSpeedScale = 1;
-        private static float minMovementSpeedScale = 0;
-        private static float startMovementSpeedScale = 0;
-        private static float endMovementSpeedScale = 90;
+    private static float maxAttackSpeedScale = 1;
+    private static float minAttackSpeedScale = 0;
+    private static float startAttackSpeedScale = 0;
+    private static float endAttackSpeedScale = 90;
 
-        private static float maxAttackSpeedScale = 1;
-        private static float minAttackSpeedScale = 0;
-        private static float startAttackSpeedScale = 0;
-        private static float endAttackSpeedScale = 90;
-
-        private static float maxMiningSpeedScale = 1;
-        private static float minMiningSpeedScale = 0;
-        private static float startMiningSpeedScale = 0;
-        private static float endMiningSpeedScale = 80; //After which you cannot mine
+    private static float maxMiningSpeedScale = 1;
+    private static float minMiningSpeedScale = 0;
+    private static float startMiningSpeedScale = 0;
+    private static float endMiningSpeedScale = 80; //After which you cannot mine
     //endregion
 
     //Constructor
-    public RealisticDamage()
-    {
-
+    public RealisticDamage() {
         IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
 
-        // Register the commonSetup method for modloading
         modEventBus.addListener(this::commonSetup);
 
-        // Register ourselves for server and other game events we are interested in
         MinecraftForge.EVENT_BUS.register(this);
 
-        // Register our mod's ForgeConfigSpec so that Forge can create and load the config file for us
         ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, Config.SPEC);
     }
 
     //Register packet handler
-    private void commonSetup(final FMLCommonSetupEvent event)
-    {
-        // Some common setup code
+    private void commonSetup(final FMLCommonSetupEvent event) {
         LOGGER.info("HELLO FROM COMMON SETUP");
         event.enqueueWork(PacketHandler::register);
     }
@@ -171,18 +163,38 @@ public class RealisticDamage
     public static void onLivingHurt(LivingHurtEvent event) {
         if (event.getEntity() instanceof Player) {
             Player player = (Player) event.getEntity();
+
+            if (event.getSource().getDirectEntity() instanceof Arrow) {
+                Arrow arrow = (Arrow) event.getSource().getDirectEntity();
+
+                String hitBodyPart = detectHitBodyPart(player, arrow);
+
+                //TODO head code sets it to right arm?
+                if (hitBodyPart.equals("head")) {
+                    arrow.setPos(player.getX(), player.getY() + player.getBbHeight() * 0.9, player.getZ());  // Example for head
+                } else if (hitBodyPart.equals("arm")) {
+                    arrow.setPos(player.getX() + 0.3, player.getY() + player.getBbHeight() * 0.6, player.getZ());  // Example for arm
+                } else if (hitBodyPart.equals("chest")) {
+                    arrow.setPos(player.getX(), player.getY() + player.getBbHeight() * 0.5, player.getZ());  // Example for chest
+                } else {
+                    arrow.setPos(player.getX(), player.getY() + player.getBbHeight() * 0.2, player.getZ());  // Example for leg
+                }
+
+                player.sendSystemMessage(Component.literal("Player hit in the " + hitBodyPart));
+            }
+
             player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
                 pain.addChronicPain(event.getAmount() * 4);
-                if(System.currentTimeMillis() - lastAdrenalineRushTime > adrenalineRushCooldown && pain.getAdrenalineLevel() == 0) {
+                if (System.currentTimeMillis() - lastAdrenalineRushTime > adrenalineRushCooldown && pain.getAdrenalineLevel() == 0) {
                     if (pain.getChronicPainLevel() >= 30) {
                         pain.setAdrenalineLevel(50 + ((pain.getChronicPainLevel() - 30) / 70) * 50);
                         lastAdrenalineRushReset = false;
                     }
                 }
-                if(pain.getChronicPainLevel() < 0) pain.setChronicPainLevel(0);
-                if(pain.getAdrenalineLevel() < 0) pain.setAdrenalineLevel(0);
-                if(pain.getChronicPainLevel() > 100) pain.setChronicPainLevel(100);
-                if(pain.getAdrenalineLevel() > 100) pain.setAdrenalineLevel(100);
+                if (pain.getChronicPainLevel() < 0) pain.setChronicPainLevel(0);
+                if (pain.getAdrenalineLevel() < 0) pain.setAdrenalineLevel(0);
+                if (pain.getChronicPainLevel() > 100) pain.setChronicPainLevel(100);
+                if (pain.getAdrenalineLevel() > 100) pain.setAdrenalineLevel(100);
 
                 if (player instanceof ServerPlayer) {
                     PacketHandler.sendToPlayer(new CPainLevelPacket(pain.getChronicPainLevel(), pain.getAdrenalineLevel()), () -> (ServerPlayer) player);
@@ -191,28 +203,52 @@ public class RealisticDamage
         }
     }
 
-    @SubscribeEvent public void onBreakSpeed(PlayerEvent.BreakSpeed event) {
+    private static String detectHitBodyPart(Player player, Arrow arrow) {
+        Vec3 arrowPos = arrow.position();
+        Vec3 playerPos = player.position();
+
+        double relativeX = arrowPos.x - playerPos.x;
+        double relativeY = arrowPos.y - playerPos.y;
+        double relativeZ = arrowPos.z - playerPos.z;
+
+        // Simple hit detection based on relative position
+        player.sendSystemMessage(Component.literal("Relative X,Y" + relativeX + "," + relativeY + "," + relativeZ));
+
+        if (relativeY > player.getBbHeight() * 0.8) {
+            return "head";
+        } else if (relativeY > player.getBbHeight() * 0.4) {
+            if (Math.abs(relativeX) > 0.3 || Math.abs(relativeZ) > 0.3) {
+                return "arm";
+            } else {
+                return "chest";
+            }
+        } else {
+            return "leg";
+        }
+
+    }
+
+    @SubscribeEvent
+    public void onBreakSpeed(PlayerEvent.BreakSpeed event) {
         //Modify the break speed for both client and server side, may be unnecessary
         if (event.getEntity() instanceof ServerPlayer) {
             ServerPlayer player = (ServerPlayer) event.getEntity();
-            player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain ->{
+            player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
                 //Lower speed such that 90 pain = 0 speed
                 double miningSpeedScale = Math.max(Math.min((((maxMiningSpeedScale - minMiningSpeedScale) / (startMiningSpeedScale - endMiningSpeedScale)) * (pain.getChronicPainLevel() - endMiningSpeedScale)) + minMiningSpeedScale, maxMiningSpeedScale), minMiningSpeedScale);
-                if(pain.getAdrenalineLevel() != 0) miningSpeedScale = 1;
-                event.setNewSpeed(event.getOriginalSpeed() * (float)miningSpeedScale);
+                if (pain.getAdrenalineLevel() != 0) miningSpeedScale = 1;
+                event.setNewSpeed(event.getOriginalSpeed() * (float) miningSpeedScale);
             });
-        }
-        else if (event.getEntity() instanceof Player) {
-            Player player =  event.getEntity();
-            player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain ->{
+        } else if (event.getEntity() instanceof Player) {
+            Player player = event.getEntity();
+            player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
                 //Lower speed such that 90 pain = 0 speed
                 double miningSpeedScale = Math.max(Math.min((((maxMiningSpeedScale - minMiningSpeedScale) / (startMiningSpeedScale - endMiningSpeedScale)) * (pain.getChronicPainLevel() - endMiningSpeedScale)) + minMiningSpeedScale, maxMiningSpeedScale), minMiningSpeedScale);
-                if(pain.getAdrenalineLevel() != 0) miningSpeedScale = 1;
-                event.setNewSpeed(event.getOriginalSpeed() * (float)miningSpeedScale);
+                if (pain.getAdrenalineLevel() != 0) miningSpeedScale = 1;
+                event.setNewSpeed(event.getOriginalSpeed() * (float) miningSpeedScale);
             });
         }
     }
-
 
 
     //Lower pain level with packets and update player modifiers.
@@ -223,26 +259,25 @@ public class RealisticDamage
         if (event.phase == TickEvent.Phase.START) {
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
-                    if(pain.getChronicPainLevel() > 0) {
-                        if(pain.getAdrenalineLevel() == 0) {
+                    if (pain.getChronicPainLevel() > 0) {
+                        if (pain.getAdrenalineLevel() == 0) {
                             pain.addChronicPain(-.05f); //Chronic pain lowers by 1 per second
                         }
-                        if(pain.getChronicPainLevel() < 0) pain.setChronicPainLevel(0);
-                        if(pain.getChronicPainLevel() > 100) pain.setChronicPainLevel(100);
+                        if (pain.getChronicPainLevel() < 0) pain.setChronicPainLevel(0);
+                        if (pain.getChronicPainLevel() > 100) pain.setChronicPainLevel(100);
                     }
 
-                    if(pain.getAdrenalineLevel() > 0) {
+                    if (pain.getAdrenalineLevel() > 0) {
                         pain.addAdrenaline(-.05f * 5); //Adrenaline pain lowers by 6 per second
-                        if(pain.getAdrenalineLevel() < 0) pain.setAdrenalineLevel(0);
-                        if(pain.getAdrenalineLevel() > 100) pain.setAdrenalineLevel(100);
-                    }
-                    else if(!lastAdrenalineRushReset){
+                        if (pain.getAdrenalineLevel() < 0) pain.setAdrenalineLevel(0);
+                        if (pain.getAdrenalineLevel() > 100) pain.setAdrenalineLevel(100);
+                    } else if (!lastAdrenalineRushReset) {
                         //Set cooldown once the player has no adrenaline
                         lastAdrenalineRushTime = System.currentTimeMillis();
                         lastAdrenalineRushReset = true;
                     }
 
-                    if(player.isCreative()){
+                    if (player.isCreative()) {
                         pain.setChronicPainLevel(0);
                         pain.setAdrenalineLevel(0);
                         lastAdrenalineRushTime = 0;
@@ -264,7 +299,7 @@ public class RealisticDamage
         // Stop player from sprinting after 40 pain
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
-                if(pain.getAdrenalineLevel() == 0) {
+                if (pain.getAdrenalineLevel() == 0) {
                     if (pain.getChronicPainLevel() >= 40) {
                         if (!player.onGround() && keyPacketHandled) {
                             PacketHandler.sendToPlayer(new CStopKeyPacket("sprint movement"), () -> (ServerPlayer) player);
@@ -291,7 +326,7 @@ public class RealisticDamage
     //TODO make this only happen when the player has adrenaline
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
-        event.getEntity().getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain ->{
+        event.getEntity().getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
 
             // Check if the player is holding a block
             if (!(event.getItemStack().getItem() instanceof BlockItem)) {
@@ -300,35 +335,19 @@ public class RealisticDamage
 
             long currentTime = System.currentTimeMillis();
 
-            if(pain.getAdrenalineLevel() != 0){
-              event.setCanceled(true);
-              event.setUseItem(Event.Result.DENY);
+            if (pain.getAdrenalineLevel() != 0) {
+                event.setCanceled(true);
+                event.setUseItem(Event.Result.DENY);
             }
-//                if (currentTime - lastActionTime < ACTION_COOLDOWN && !allowedLastAction) {
-//                    event.setCanceled(true);
-//                    event.setUseItem(Event.Result.DENY);
-//
-//                } else {
-//                    event.setCanceled(false);
-//                    event.setUseItem(Event.Result.ALLOW);
-//
-//                    if (allowedLastAction) {
-//                        allowedLastAction = false;
-//                    } else {
-//                        allowedLastAction = true;
-//                    }
-//                }
-
         });
-
     }
 
     //set the lastActionTime
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onBlockPlace(BlockEvent.EntityPlaceEvent event) {
         //Reset the action time here because sometimes the RClickBlock code says allowed but then minecraft denys it
-        Objects.requireNonNull(event.getEntity()).getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain ->{
-            if(pain.getAdrenalineLevel() == 0){
+        Objects.requireNonNull(event.getEntity()).getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
+            if (pain.getAdrenalineLevel() == 0) {
                 lastActionTime = System.currentTimeMillis();
             }
         });
@@ -385,7 +404,7 @@ public class RealisticDamage
                         mc.player.setSprinting(false);
                     }
                     //Disable jumping if the player has jumped recently, or they are over 90 pain
-                    if((System.currentTimeMillis() - lastJumpTime < jumpCooldown || pain.getChronicPainLevel() > 90) && pain.getAdrenalineLevel() == 0) {
+                    if ((System.currentTimeMillis() - lastJumpTime < jumpCooldown || pain.getChronicPainLevel() > 90) && pain.getAdrenalineLevel() == 0) {
                         mc.options.keyJump.setDown(false);
                         mc.player.setJumping(false);
                     }
@@ -412,7 +431,7 @@ public class RealisticDamage
         //Determine if the player let go of movement midair
         //Needed to tell if we should resume the movement when the player lands
         //Otherwise the player will keep moving even if they let go
-        @SubscribeEvent (priority = EventPriority.HIGHEST)
+        @SubscribeEvent(priority = EventPriority.HIGHEST)
         @OnlyIn(Dist.CLIENT)
         public static void onKeyInput(InputEvent.Key event) {
             Minecraft minecraft = Minecraft.getInstance();
@@ -487,7 +506,7 @@ public class RealisticDamage
                 double movementSpeedScale = Math.max(Math.min((((maxMovementSpeedScale - minMovementSpeedScale) / (startMovementSpeedScale - endMovementSpeedScale)) * (pain.getChronicPainLevel() - endMovementSpeedScale)) + minMovementSpeedScale, maxMovementSpeedScale), minMovementSpeedScale);
                 movementSpeedScale -= 1; //Reduce it by 1 as Minecraft takes our values and adds 1 to it
                 // If the value has changed, remove the old modifier and add a new one with the updated value
-                if(pain.getAdrenalineLevel() != 0) movementSpeedScale = 0.6; // 1.6 times
+                if (pain.getAdrenalineLevel() != 0) movementSpeedScale = 0.6; // 1.6 times
                 if (existingModifier.getAmount() != movementSpeedScale) {
                     movementSpeed.removeModifier(PAIN_MOVEMENT_SPEED_MODIFIER_ID);
                     AttributeModifier updatedModifier = new AttributeModifier(
@@ -511,7 +530,7 @@ public class RealisticDamage
                 //Lower speed such that 90 pain = 0 speed
                 double attackSpeedScale = Math.max(Math.min((((maxAttackSpeedScale - minAttackSpeedScale) / (startAttackSpeedScale - endAttackSpeedScale)) * (pain.getChronicPainLevel() - endAttackSpeedScale)) + minAttackSpeedScale, maxAttackSpeedScale), minAttackSpeedScale);
                 attackSpeedScale -= 1; //Reduce it by 1 as Minecraft takes our values and adds 1 to it
-                if(pain.getAdrenalineLevel() != 0) attackSpeedScale = 7; //8 times
+                if (pain.getAdrenalineLevel() != 0) attackSpeedScale = 7; //8 times
                 // If the value has changed, remove the old modifier and add a new one with the updated value
                 if (existingModifier.getAmount() != attackSpeedScale) {
                     attackSpeed.removeModifier(PAIN_ATTACK_SPEED_MODIFIER_ID);
@@ -528,7 +547,7 @@ public class RealisticDamage
 
 
         //Set the jump Cooldown
-        if(!player.isInFluidType()) {
+        if (!player.isInFluidType()) {
             jumpCooldown = pain.getChronicPainLevel() < startJumpCooldown ? 0 : Math.max(Math.min((((minJumpCooldown - maxJumpCooldown) / (startJumpCooldown - endJumpCooldown)) * (pain.getChronicPainLevel() - endJumpCooldown)) + maxJumpCooldown, maxJumpCooldown), minJumpCooldown);
         }
     }
