@@ -1,15 +1,20 @@
 package com.github.Jc42.realisticdamage;
 
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+
+import java.util.ArrayList;
 
 class PainCapability implements IPainCapability {
     private float chronicPainLevel = 0;
     private float adrenalineLevel = 0;
+    private ArrayList<Wound> wounds = new ArrayList<>();
 
-    @Override
-    public void addChronicPain(float amount) {
-        this.chronicPainLevel += amount;
-    }
+//    @Override
+//    public void addChronicPain(float amount) {
+//        this.chronicPainLevel += amount;
+//    }
+
     @Override
     public void addAdrenaline(float amount) {
         this.adrenalineLevel += amount;
@@ -17,7 +22,24 @@ class PainCapability implements IPainCapability {
 
     @Override
     public float getChronicPainLevel() {
+        calculateChronicPainLevel();
         return this.chronicPainLevel;
+    }
+
+    @Override
+    public void calculateChronicPainLevel() {
+        int maxPain = 0;
+
+        for(int i = 0; i < wounds.size(); i++){
+            System.out.println("running");
+            if(wounds.get(i).getPain() > maxPain){
+                System.out.println(i);
+                maxPain = wounds.get(i).getPain();
+            }
+        }
+
+        System.out.println(maxPain);
+        this.chronicPainLevel = maxPain;
     }
 
     @Override
@@ -26,9 +48,29 @@ class PainCapability implements IPainCapability {
     }
 
     @Override
-    public void setChronicPainLevel(float level) {
-        this.chronicPainLevel = level;
+    public void addWound(Wound w){
+        wounds.add(w);
     }
+
+    @Override
+    public ArrayList<Wound> getWounds() {
+        return wounds;
+    }
+
+    @Override
+    public void tickWounds(){
+        for(int i = 0; i < wounds.size(); i++){
+            if(wounds.get(i).tick()){
+                wounds.remove(i);
+                i--;
+            }
+        }
+    }
+
+//    @Override
+//    public void setChronicPainLevel(float level) {
+//        this.chronicPainLevel = level;
+//    }
 
     @Override
     public void setAdrenalineLevel(float level) {
@@ -38,8 +80,15 @@ class PainCapability implements IPainCapability {
     @Override
     public CompoundTag serializeNBT() {
         CompoundTag tag = new CompoundTag();
-        tag.putFloat("chronicPainLevel", this.chronicPainLevel);
+        tag.putFloat("chronicPainLevel", getChronicPainLevel());
         tag.putFloat("adrenalineLevel", this.adrenalineLevel);
+
+        ListTag woundsTag = new ListTag();
+        for (Wound wound : wounds) {
+            woundsTag.add(wound.serializeNBT());
+        }
+        tag.put("wounds", woundsTag);
+
         return tag;
     }
 
@@ -47,5 +96,14 @@ class PainCapability implements IPainCapability {
     public void deserializeNBT(CompoundTag nbt) {
         this.chronicPainLevel = nbt.getFloat("chronicPainLevel");
         this.adrenalineLevel = nbt.getFloat("adrenalineLevel");
+
+        this.wounds.clear();
+        ListTag woundsTag = nbt.getList("wounds", 10); // 10 for CompoundTag
+        for (int i = 0; i < woundsTag.size(); i++) {
+            CompoundTag woundTag = woundsTag.getCompound(i);
+            Wound wound = new Wound("Incision", 1, "Head"); // Create a new instance
+            wound.deserializeNBT(woundTag); // Populate it from the tag
+            wounds.add(wound);
+        }
     }
 }

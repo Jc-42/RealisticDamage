@@ -10,6 +10,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
@@ -100,6 +103,8 @@ public class RealisticDamage {
     private static float minMiningSpeedScale = 0;
     private static float startMiningSpeedScale = 0;
     private static float endMiningSpeedScale = 80; //After which you cannot mine
+
+    private static float startNauseaEffect = 60; //Above which nausea is applied
     //endregion
 
     //Constructor
@@ -163,8 +168,12 @@ public class RealisticDamage {
     public static void onLivingHurt(LivingHurtEvent event) {
         if (event.getEntity() instanceof Player) {
             Player player = (Player) event.getEntity();
+            DamageSource damageSource = event.getSource();
 
-            if (event.getSource().getDirectEntity() instanceof Arrow) {
+            //TODO figure out dammage types
+            //player.sendSystemMessage(Component.literal("SOURCE: " + damageSource + " " + damageSource.));
+
+            if (damageSource.getDirectEntity() instanceof Arrow) {
                 Arrow arrow = (Arrow) event.getSource().getDirectEntity();
 
                 String hitBodyPart = detectHitBodyPart(player, arrow);
@@ -184,20 +193,22 @@ public class RealisticDamage {
             }
 
             player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
-                pain.addChronicPain(event.getAmount() * 4);
+                //~~ pain.addChronicPain(event.getAmount() * 4);
+                pain.addWound(new Wound("Incision", 2, "Head"));
+                player.sendSystemMessage(Component.literal("" + pain.getChronicPainLevel()));
                 if (System.currentTimeMillis() - lastAdrenalineRushTime > adrenalineRushCooldown && pain.getAdrenalineLevel() == 0) {
                     if (pain.getChronicPainLevel() >= 30) {
                         pain.setAdrenalineLevel(50 + ((pain.getChronicPainLevel() - 30) / 70) * 50);
                         lastAdrenalineRushReset = false;
                     }
                 }
-                if (pain.getChronicPainLevel() < 0) pain.setChronicPainLevel(0);
+                //~~ if (pain.getChronicPainLevel() < 0) pain.setChronicPainLevel(0);
                 if (pain.getAdrenalineLevel() < 0) pain.setAdrenalineLevel(0);
-                if (pain.getChronicPainLevel() > 100) pain.setChronicPainLevel(100);
+                //~~ if (pain.getChronicPainLevel() > 100) pain.setChronicPainLevel(100);
                 if (pain.getAdrenalineLevel() > 100) pain.setAdrenalineLevel(100);
-
                 if (player instanceof ServerPlayer) {
-                    PacketHandler.sendToPlayer(new CPainLevelPacket(pain.getChronicPainLevel(), pain.getAdrenalineLevel()), () -> (ServerPlayer) player);
+                    //~~ PacketHandler.sendToPlayer(new CPainLevelPacket(pain.getChronicPainLevel(), pain.getAdrenalineLevel()), () -> (ServerPlayer) player);
+                    PacketHandler.sendToPlayer(new CPainLevelPacket(pain.getAdrenalineLevel(), pain.getWounds()), () -> (ServerPlayer) player);
                 }
             });
         }
@@ -261,10 +272,10 @@ public class RealisticDamage {
                 player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
                     if (pain.getChronicPainLevel() > 0) {
                         if (pain.getAdrenalineLevel() == 0) {
-                            pain.addChronicPain(-.05f); //Chronic pain lowers by 1 per second
+                            //~~ pain.addChronicPain(-.05f); //Chronic pain lowers by 1 per second
                         }
-                        if (pain.getChronicPainLevel() < 0) pain.setChronicPainLevel(0);
-                        if (pain.getChronicPainLevel() > 100) pain.setChronicPainLevel(100);
+                        //~~ if (pain.getChronicPainLevel() < 0) pain.setChronicPainLevel(0);
+                        //~~ if (pain.getChronicPainLevel() > 100) pain.setChronicPainLevel(100);
                     }
 
                     if (pain.getAdrenalineLevel() > 0) {
@@ -278,7 +289,7 @@ public class RealisticDamage {
                     }
 
                     if (player.isCreative()) {
-                        pain.setChronicPainLevel(0);
+                        //~~ pain.setChronicPainLevel(0);
                         pain.setAdrenalineLevel(0);
                         lastAdrenalineRushTime = 0;
                     }
@@ -290,7 +301,10 @@ public class RealisticDamage {
                     //Lower attach speed such that at 90 pain attack speed = 0
                     //Objects.requireNonNull(player.getAttribute(Attributes.ATTACK_SPEED)).setBaseValue(Math.max(VANILLA_BASE_SPEED - (pain.getChronicPainLevel() * .00111111), 0));
                     //player.getAttribute()
-                    PacketHandler.sendToPlayer(new CPainLevelPacket(pain.getChronicPainLevel(), pain.getAdrenalineLevel()), () -> (ServerPlayer) player);
+
+                    //~~ PacketHandler.sendToPlayer(new CPainLevelPacket(pain.getChronicPainLevel(), pain.getAdrenalineLevel()), () -> (ServerPlayer) player);
+
+                    PacketHandler.sendToPlayer(new CPainLevelPacket(pain.getAdrenalineLevel(), pain.getWounds()), () -> (ServerPlayer) player);
                 });
             }
 
@@ -549,6 +563,11 @@ public class RealisticDamage {
         //Set the jump Cooldown
         if (!player.isInFluidType()) {
             jumpCooldown = pain.getChronicPainLevel() < startJumpCooldown ? 0 : Math.max(Math.min((((minJumpCooldown - maxJumpCooldown) / (startJumpCooldown - endJumpCooldown)) * (pain.getChronicPainLevel() - endJumpCooldown)) + maxJumpCooldown, maxJumpCooldown), minJumpCooldown);
+        }
+
+        //Set Nausea Effect
+        if(pain.getChronicPainLevel() >= startNauseaEffect && pain.getAdrenalineLevel() == 0){
+            player.addEffect(new MobEffectInstance(MobEffects.CONFUSION, 20 * 5, 0, false, false, false));
         }
     }
 }
