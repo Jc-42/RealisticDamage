@@ -28,17 +28,14 @@ class PainCapability implements IPainCapability {
 
     @Override
     public void calculateChronicPainLevel() {
-        int maxPain = 0;
+        float maxPain = 0;
 
+        //TODO make this better, maybe make it so that the more wounds you have the slower they heal?
         for(int i = 0; i < wounds.size(); i++){
-            System.out.println("running");
             if(wounds.get(i).getPain() > maxPain){
-                System.out.println(i);
                 maxPain = wounds.get(i).getPain();
             }
         }
-
-        System.out.println(maxPain);
         this.chronicPainLevel = maxPain;
     }
 
@@ -60,10 +57,7 @@ class PainCapability implements IPainCapability {
     @Override
     public void tickWounds(){
         for(int i = 0; i < wounds.size(); i++){
-            if(wounds.get(i).tick()){
-                wounds.remove(i);
-                i--;
-            }
+            if(wounds.get(i).tick() <= 0) wounds.remove(i--);
         }
     }
 

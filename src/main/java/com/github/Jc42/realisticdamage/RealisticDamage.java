@@ -11,15 +11,17 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.projectile.ThrownTrident;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.Arrow;
-import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.*;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
@@ -168,33 +170,45 @@ public class RealisticDamage {
     public static void onLivingHurt(LivingHurtEvent event) {
         if (event.getEntity() instanceof Player) {
             Player player = (Player) event.getEntity();
-            DamageSource damageSource = event.getSource();
+            player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
+                DamageSource damageSource = event.getSource();
+                Entity directEntity = damageSource.getDirectEntity();
+                String damageType = classifyDamage(damageSource, directEntity);
+                //TODO figure out dammage types
+                //player.sendSystemMessage(Component.literal("SOURCE: " + damageSource + " " + damageSource.));
 
-            //TODO figure out dammage types
-            //player.sendSystemMessage(Component.literal("SOURCE: " + damageSource + " " + damageSource.));
+                if (directEntity instanceof Arrow) {
+                    Arrow arrow = (Arrow) directEntity;
 
-            if (damageSource.getDirectEntity() instanceof Arrow) {
-                Arrow arrow = (Arrow) event.getSource().getDirectEntity();
+                    String hitBodyPart = detectHitBodyPart(player, arrow);
 
-                String hitBodyPart = detectHitBodyPart(player, arrow);
+                    //TODO head code sets it to right arm?
+                    if (hitBodyPart.equals("head")) {
+                        arrow.setPos(player.getX(), player.getY() + player.getBbHeight() * 0.9, player.getZ());  // Example for head
+                    } else if (hitBodyPart.equals("arm")) {
+                        arrow.setPos(player.getX() + 0.3, player.getY() + player.getBbHeight() * 0.6, player.getZ());  // Example for arm
+                    } else if (hitBodyPart.equals("chest")) {
+                        arrow.setPos(player.getX(), player.getY() + player.getBbHeight() * 0.5, player.getZ());  // Example for chest
+                    } else {
+                        arrow.setPos(player.getX(), player.getY() + player.getBbHeight() * 0.2, player.getZ());  // Example for leg
+                    }
 
-                //TODO head code sets it to right arm?
-                if (hitBodyPart.equals("head")) {
-                    arrow.setPos(player.getX(), player.getY() + player.getBbHeight() * 0.9, player.getZ());  // Example for head
-                } else if (hitBodyPart.equals("arm")) {
-                    arrow.setPos(player.getX() + 0.3, player.getY() + player.getBbHeight() * 0.6, player.getZ());  // Example for arm
-                } else if (hitBodyPart.equals("chest")) {
-                    arrow.setPos(player.getX(), player.getY() + player.getBbHeight() * 0.5, player.getZ());  // Example for chest
-                } else {
-                    arrow.setPos(player.getX(), player.getY() + player.getBbHeight() * 0.2, player.getZ());  // Example for leg
+                    //TODO remove this later and specify which leg / arm
+                    if(hitBodyPart.equals("arm") || hitBodyPart.equals("leg")) hitBodyPart = "left " + hitBodyPart;
+
+                    //TODO make it so that the severity is based on the amount of damage
+                    //TODO make it so the player doesnt receive any damage for the hit, besides the amount of bleed of the wound
+                    pain.addWound(new Wound("Puncture", 2, hitBodyPart));
+
+                    player.sendSystemMessage(Component.literal("Player hit in the " + hitBodyPart + " " + event.getAmount()));
+                }
+                else{
+                    //TODO make helper method for serverity
+                    pain.addWound(new Wound(damageType, event.getAmount() >= 8 ? 3 : (event.getAmount() > 4 ? 2 : 1), "head"));
                 }
 
-                player.sendSystemMessage(Component.literal("Player hit in the " + hitBodyPart));
-            }
-
-            player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
                 //~~ pain.addChronicPain(event.getAmount() * 4);
-                pain.addWound(new Wound("Incision", 2, "Head"));
+
                 player.sendSystemMessage(Component.literal("" + pain.getChronicPainLevel()));
                 if (System.currentTimeMillis() - lastAdrenalineRushTime > adrenalineRushCooldown && pain.getAdrenalineLevel() == 0) {
                     if (pain.getChronicPainLevel() >= 30) {
@@ -213,6 +227,52 @@ public class RealisticDamage {
             });
         }
     }
+
+    private static String classifyDamage(DamageSource source, Entity directEntity) {
+        //TODO add fracture and hematoma
+        if (source.is(DamageTypes.IN_FIRE) ||
+                source.is(DamageTypes.ON_FIRE) ||
+                source.is(DamageTypes.LAVA) ||
+                source.is(DamageTypes.HOT_FLOOR)) {
+            return "burn";
+        }
+
+        if (directEntity instanceof Player) {
+            Player attacker = (Player) directEntity;
+            ItemStack weapon = attacker.getMainHandItem();
+            if (weapon.getItem() instanceof SwordItem ||
+                    weapon.getItem() instanceof AxeItem) {
+                return "incision";
+            }
+        }
+
+        if (directEntity instanceof Arrow ||
+                directEntity instanceof ThrownTrident ||
+                source.is(DamageTypes.ARROW) ||
+                source.is(DamageTypes.TRIDENT)) {
+            return "puncture";
+        }
+
+        if (source.is(DamageTypes.FALL) ||
+                source.is(DamageTypes.FLY_INTO_WALL) ||
+                source.is(DamageTypes.FALLING_BLOCK)) {
+            return "laceration";
+        }
+
+        if (source.is(DamageTypes.SWEET_BERRY_BUSH) ||
+                source.is(DamageTypes.CACTUS) ||
+                source.is(DamageTypes.CRAMMING)) {
+            return "abrasion";
+        }
+
+        if (source.is(DamageTypes.MOB_ATTACK) ||
+                source.is(DamageTypes.GENERIC)) {
+            return "laceration";
+        }
+
+        return "incision"; // Unknown damage type
+    }
+
 
     private static String detectHitBodyPart(Player player, Arrow arrow) {
         Vec3 arrowPos = arrow.position();
@@ -272,6 +332,11 @@ public class RealisticDamage {
                 player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
                     if (pain.getChronicPainLevel() > 0) {
                         if (pain.getAdrenalineLevel() == 0) {
+                            for(int i = 0; i < pain.getWounds().size(); i++){
+
+                                //TODO replace with tickWounds
+                                if(pain.getWounds().get(i).tick() <= 0) pain.getWounds().remove(i--);
+                            }
                             //~~ pain.addChronicPain(-.05f); //Chronic pain lowers by 1 per second
                         }
                         //~~ if (pain.getChronicPainLevel() < 0) pain.setChronicPainLevel(0);
@@ -290,6 +355,7 @@ public class RealisticDamage {
 
                     if (player.isCreative()) {
                         //~~ pain.setChronicPainLevel(0);
+                        pain.getWounds().clear();
                         pain.setAdrenalineLevel(0);
                         lastAdrenalineRushTime = 0;
                     }

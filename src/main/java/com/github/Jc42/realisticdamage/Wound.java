@@ -1,6 +1,9 @@
 package com.github.Jc42.realisticdamage;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.player.Player;
 
 import java.util.Random;
 
@@ -11,6 +14,9 @@ public class Wound {
     private String bodyPart;
     private int ticksRemaining;
     private int pain;
+    private final int SEVERITY_ONE_TICKS = 12000; // 0.5 days
+    private final int SEVERITY_TWO_TICKS = 36000; // 1.5 days
+    private final int SEVERITY_THREE_TICKS = 72000; // 3 days
 
     /**
      * If severity is set to 3 and type is an open wound there is a 10% chance of the wound being fatal (bleeding cannot be fully stopped)
@@ -30,7 +36,7 @@ public class Wound {
      *                 <li>Burn - Wound caused by extreme temperature</li>
      *                 </ol>
      * @param severity The severity of the wound ranging from 1-3
-     * @param bodyPart The location of the wound.
+     * @param bodyPart The location of the wound - stored in lowercase.
      *                 <h6>Can be:</h6>
      *                 <ul>
      *                 <li>Head</li>
@@ -39,8 +45,10 @@ public class Wound {
      *                 <li>Right Arm</li>
      *                 <li>Left Leg</li>
      *                 <li>Right Leg</li>
+     *                 <li>Left Foot</li>
+     *                 <li>Right Foot</li>
      *                 </ul>
-     *                 (All converted into lowercase)
+     *
      */
     public Wound(String type, int severity, String bodyPart) {
         this.type = type.toLowerCase();
@@ -51,36 +59,43 @@ public class Wound {
 
         //24000 = 1 day
         if(severity == 1){
-            ticksRemaining = 12000; //.5 days
+            ticksRemaining = SEVERITY_ONE_TICKS; //.5 days
         }
         else if(severity == 2){
-            ticksRemaining = 36000; //1.5 days
+            ticksRemaining = SEVERITY_TWO_TICKS; //1.5 days
         }
         else if(severity == 3){
-            ticksRemaining = 72000; // 3 days
+            ticksRemaining = SEVERITY_THREE_TICKS; // 3 days
         }
 
-        //TODO allow the wound to slowly heal and lower its pain on a sqrt(x) scale
+        //TODO add a bleed amount to the wounds
         //Set fatal if severity is 3, type is an open wound, and isFatalRoll <= 10
         switch (this.type){
             case "incision":
                 isFatal = isFatalRoll <= 10 && this.severity == 3;
                 pain = this.severity == 1 ? 15 : (this.severity == 2 ? 40 : 85);
+                break;
             case "laceration":
                 isFatal = isFatalRoll <= 10 && this.severity == 3;
                 pain = this.severity == 1 ? 15 : (this.severity == 2 ? 40 : 85);
+                break;
             case "abrasion":
                 isFatal = isFatalRoll <= 10 && this.severity == 3;
                 pain = this.severity == 1 ? 5 : (this.severity == 2 ? 20 : 40);
+                break;
             case "puncture":
                 isFatal = isFatalRoll <= 10 && this.severity == 3;
                 pain = this.severity == 1 ? 5 : (this.severity == 2 ? 40 : 80);
+                break;
             case "hematoma":
                 pain = this.severity == 1 ? 10 : (this.severity == 2 ? 20 : 30);
+                break;
             case "fracture":
                 pain = this.severity == 1 ? 30 : (this.severity == 2 ? 60 : 85);
+                break;
             case "burn":
                 pain = this.severity == 1 ? 10 : (this.severity == 2 ? 20 : 30);
+                break;
         }
 
     }
@@ -115,10 +130,14 @@ public class Wound {
 
     /**
      * Reduces ticksRemaining by one
-     * @return true if ticksRemaining is now 0 or less, otherwise false
+     * @return ticksRemaining
      */
-    public boolean tick(){
-        return --ticksRemaining <= 0;
+    public int tick(){
+        return --ticksRemaining;
+    }
+
+    public int getTicksRemaining(){
+        return ticksRemaining;
     }
 
     public int getSeverity() {
@@ -133,8 +152,21 @@ public class Wound {
         return bodyPart;
     }
 
-    public int getPain(){
+    /**
+     *
+     * @return the original pain of this wound
+     */
+    public int getBasePain(){
         return pain;
+    }
+
+    /**
+     *
+     * @return the pain of this wound accounting for how much it healed
+     */
+    public float getPain(){
+        float ticksPercentage = 1 - ((float)ticksRemaining / (this.severity == 1 ? SEVERITY_ONE_TICKS : (this.severity == 2 ? SEVERITY_TWO_TICKS : SEVERITY_THREE_TICKS)));
+        return (float)pain * (float)Math.sqrt(-ticksPercentage + 1);
     }
 
     public boolean isFatal() {
