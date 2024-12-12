@@ -5,6 +5,8 @@ import com.github.Jc42.realisticdamage.network.CStopKeyPacket;
 import com.github.Jc42.realisticdamage.network.PacketHandler;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -25,6 +27,7 @@ import net.minecraft.world.item.*;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import net.minecraftforge.client.event.ScreenEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.capabilities.RegisterCapabilitiesEvent;
 import net.minecraftforge.event.AttachCapabilitiesEvent;
@@ -527,6 +530,22 @@ public class RealisticDamage {
             }
         }
 
+        @SubscribeEvent
+        public static void onScreenInit(ScreenEvent.Init.Post event) {
+            if (event.getScreen() instanceof InventoryScreen && !(event.getScreen() instanceof WoundsScreen)) {
+                InventoryScreen screen = (InventoryScreen) event.getScreen();
+                int x = screen.getGuiLeft();
+                int y = screen.getGuiTop();
+
+                event.addListener(Button.builder(
+                                Component.literal("W"),
+                                button -> screen.getMinecraft().setScreen(new WoundsScreen(screen.getMinecraft().player)))
+                        .pos(x + 176, y)
+                        .size(20, 20)
+                        .build()
+                );
+            }
+        }
     }
 
     //Attach the pain capability and add the movement modifier

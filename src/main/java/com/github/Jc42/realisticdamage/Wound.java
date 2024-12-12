@@ -8,6 +8,8 @@ import net.minecraft.world.entity.player.Player;
 import java.util.Random;
 
 public class Wound {
+    private int posX;
+    private int posY;
     private int severity;
     private String type;
     private boolean isFatal;
@@ -98,6 +100,8 @@ public class Wound {
                 break;
         }
 
+        setRandomPosition(bodyPart);
+
     }
 
     /**
@@ -112,6 +116,8 @@ public class Wound {
         tag.putString("bodyPart", bodyPart);
         tag.putInt("ticksRemaining", ticksRemaining);
         tag.putInt("pain", pain);
+        tag.putInt("posX", posX);
+        tag.putInt("posY", posY);
         return tag;
     }
 
@@ -126,6 +132,8 @@ public class Wound {
         this.bodyPart = tag.getString("bodyPart");
         this.ticksRemaining = tag.getInt("ticksRemaining");
         this.pain = tag.getInt("pain");
+        this.posX = tag.getInt("posX");
+        this.posY = tag.getInt("posY");
     }
 
     /**
@@ -134,6 +142,47 @@ public class Wound {
      */
     public int tick(){
         return --ticksRemaining;
+    }
+
+    private void setRandomPosition(String bodyPart) {
+        int sizeOffset = 1; // Prevent overlap with the player outline. Calculated   based on the wound size in WoundsScreen
+
+        // These ranges will need adjustment based on your UI layout
+        Random r = new Random();
+        switch(bodyPart.toLowerCase()) {
+            case "head":
+                posX = 49 + r.nextInt(24 - sizeOffset); // 49-72 x range
+                posY = 33 + r.nextInt(22 - sizeOffset); // 15-40 y range
+                break;
+            case "chest":
+                posX = 49 + r.nextInt(24 - sizeOffset); // 49-72 x range
+                posY = 57 + r.nextInt(38 - sizeOffset); // 57-94 y range
+                break;
+            case "left arm":
+                posX = 75 + r.nextInt(11 - sizeOffset); // 75-85 x range
+                posY = 57 + r.nextInt(38 - sizeOffset); // 45-85 y range
+                break;
+            case "right arm":
+                posX = 36 + r.nextInt(11 - sizeOffset); // 36-65  x range
+                posY = 57 + r.nextInt(38 - sizeOffset); // 57-94 y range
+                break;
+            case "left leg":
+                posX = 64 + r.nextInt(9 - sizeOffset); // 65-85 x range
+                posY = 97 + r.nextInt(31 - sizeOffset); // 90-140 y range
+                break;
+            case "right leg":
+                posX = 49 + r.nextInt(9 - sizeOffset); // 90-110 x range
+                posY = 97 + r.nextInt(31 - sizeOffset); // 90-140 y range
+                break;
+            case "left foot":
+                posX = 64 + r.nextInt(9 - sizeOffset); // 65-85 x range
+                posY = 128 + r.nextInt(6 - sizeOffset); // 140-160 y range
+                break;
+            case "right foot":
+                posX = 49 + r.nextInt(9 - sizeOffset); // 90-110 x range
+                posY = 128 + r.nextInt(6 - sizeOffset); // 140-160 y range
+                break;
+        }
     }
 
     public int getTicksRemaining(){
@@ -151,6 +200,15 @@ public class Wound {
     public String getBodyPart() {
         return bodyPart;
     }
+
+    public int getPosX() {
+        return posX;
+    }
+
+    public int getPosY() {
+        return posY;
+    }
+
 
     /**
      *
