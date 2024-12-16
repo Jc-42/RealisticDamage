@@ -24,7 +24,10 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.Arrow;
 import net.minecraft.world.item.*;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.ticks.TickPriority;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import net.minecraftforge.client.event.ScreenEvent;
@@ -52,6 +55,8 @@ import org.slf4j.Logger;
 import net.minecraftforge.client.event.InputEvent;
 
 import javax.swing.event.MouseInputAdapter;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.*;
 
 
@@ -169,7 +174,7 @@ public class RealisticDamage {
     //endregion
 
     //Update pain level and send pain packet
-    @SubscribeEvent
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onLivingHurt(LivingHurtEvent event) {
         if (event.getEntity() instanceof Player) {
             Player player = (Player) event.getEntity();
@@ -183,18 +188,28 @@ public class RealisticDamage {
                 if (directEntity instanceof Arrow) {
                     Arrow arrow = (Arrow) directEntity;
 
+                    //region Test arrow lodging
+
+
+                    //endregion
                     String hitBodyPart = detectHitBodyPart(player, arrow);
 
+                    double[] position = {arrow.position().x, arrow.position().y, arrow.position().z, arrow.getXRot(), arrow.getYRot()};
+
+                    pain.getLodgedArrowPositions().add(position);
+
                     //TODO head code sets it to right arm?
-                    if (hitBodyPart.equals("head")) {
-                        arrow.setPos(player.getX(), player.getY() + player.getBbHeight() * 0.9, player.getZ());  // Example for head
-                    } else if (hitBodyPart.equals("arm")) {
-                        arrow.setPos(player.getX() + 0.3, player.getY() + player.getBbHeight() * 0.6, player.getZ());  // Example for arm
-                    } else if (hitBodyPart.equals("chest")) {
-                        arrow.setPos(player.getX(), player.getY() + player.getBbHeight() * 0.5, player.getZ());  // Example for chest
-                    } else {
-                        arrow.setPos(player.getX(), player.getY() + player.getBbHeight() * 0.2, player.getZ());  // Example for leg
-                    }
+                    //TODO it never triggers the left arm or the left leg
+
+//                    if (hitBodyPart.equals("head")) {
+//                        arrow.setPos(player.getX(), player.getY() + player.getBbHeight() * 0.9, player.getZ());  // Example for head
+//                    } else if (hitBodyPart.equals("arm")) {
+//                        arrow.setPos(player.getX() + 0.3, player.getY() + player.getBbHeight() * 0.6, player.getZ());  // Example for arm
+//                    } else if (hitBodyPart.equals("chest")) {
+//                        arrow.setPos(player.getX(), player.getY() + player.getBbHeight() * 0.5, player.getZ());  // Example for chest
+//                    } else {
+//                        arrow.setPos(player.getX(), player.getY() + player.getBbHeight() * 0.2, player.getZ());  // Example for leg
+//                    }
 
                     //TODO remove this later and specify which leg / arm
                     if(hitBodyPart.equals("arm") || hitBodyPart.equals("leg")) hitBodyPart = "left " + hitBodyPart;
@@ -291,15 +306,25 @@ public class RealisticDamage {
         if (relativeY > player.getBbHeight() * 0.8) {
             return "head";
         } else if (relativeY > player.getBbHeight() * 0.4) {
-            if (Math.abs(relativeX) > 0.3 || Math.abs(relativeZ) > 0.3) {
-                return "arm";
-            } else {
+            if (relativeX > 0.3 || relativeZ > 0.3) {
+                return "right arm";
+            }
+            else if(relativeX < 0.3 || relativeZ < 0.3) {
+                return "left arm";
+            }
+            else{
                 return "chest";
             }
         } else {
-            return "leg";
+            if (relativeX > 0.3 || relativeZ > 0.3) {
+                return "right leg";
+            }
+            else if(relativeX < 0.3 || relativeZ < 0.3) {
+                return "left leg";
+            }
         }
 
+        return "chest";
     }
 
     @SubscribeEvent

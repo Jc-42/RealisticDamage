@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.github.Jc42.realisticdamage.mixins",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "realisticdamage.refmap.json",
+  "client": [
+    "CustomArrowPincushion",
+    "CustomArrowPincushionRotation"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

@@ -9,6 +9,8 @@ import net.minecraftforge.common.capabilities.ICapabilityProvider;
 import net.minecraftforge.common.util.INBTSerializable;
 import net.minecraftforge.common.util.LazyOptional;
 
+import java.util.ArrayList;
+
 public class PainCapabilityProvider implements ICapabilityProvider, INBTSerializable<CompoundTag> {
     public static final Capability<IPainCapability> PAIN_CAPABILITY = CapabilityManager.get(new CapabilityToken<>() {});
 

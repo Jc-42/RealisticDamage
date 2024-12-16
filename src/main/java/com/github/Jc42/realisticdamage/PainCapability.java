@@ -9,6 +9,7 @@ class PainCapability implements IPainCapability {
     private float chronicPainLevel = 0;
     private float adrenalineLevel = 0;
     private ArrayList<Wound> wounds = new ArrayList<>();
+    private ArrayList<double[]> lodgedArrowPositions = new ArrayList<>();
 
 //    @Override
 //    public void addChronicPain(float amount) {
@@ -72,6 +73,11 @@ class PainCapability implements IPainCapability {
     }
 
     @Override
+    public ArrayList<double[]> getLodgedArrowPositions(){
+        return lodgedArrowPositions;
+    }
+
+    @Override
     public CompoundTag serializeNBT() {
         CompoundTag tag = new CompoundTag();
         tag.putFloat("chronicPainLevel", getChronicPainLevel());
@@ -100,4 +106,6 @@ class PainCapability implements IPainCapability {
             wounds.add(wound);
         }
     }
+
+
 }
