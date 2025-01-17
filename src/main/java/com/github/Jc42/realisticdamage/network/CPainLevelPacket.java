@@ -42,7 +42,7 @@ public class CPainLevelPacket {
         int woundCount = buffer.readInt();
         ArrayList<Wound> wounds = new ArrayList<>();
         for (int i = 0; i < woundCount; i++) {
-            Wound wound = new Wound("Incision", 1, "Head");
+            Wound wound = new Wound("Laceration", 1, "Head");
             wound.deserializeNBT(buffer.readNbt());
             wounds.add(wound);
         }

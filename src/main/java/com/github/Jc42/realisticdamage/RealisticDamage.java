@@ -17,12 +17,12 @@ import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.projectile.ThrownTrident;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.projectile.*;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.entity.projectile.Arrow;
 import net.minecraft.world.item.*;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
@@ -221,8 +221,16 @@ public class RealisticDamage {
                     player.sendSystemMessage(Component.literal("Player hit in the " + hitBodyPart + " " + event.getAmount()));
                 }
                 else{
-                    //TODO make helper method for serverity
-                    pain.addWound(new Wound(damageType, event.getAmount() >= 8 ? 3 : (event.getAmount() > 4 ? 2 : 1), "head"));
+                    if(!damageType.equals("vanilla")) {
+                        float fractionLost = event.getAmount() / player.getMaxHealth();
+                        int severity = fractionLost >= .6 ? 3 : (fractionLost >= .4 ? 2 : (fractionLost >= .25 ? 1 : 0));
+                        if(damageType.equals("blunt")){
+                            if(severity == 3) damageType = "laceration";
+                            else damageType = "hematoma";
+                        }
+                        String bodyPart = getWoundLocation();
+                        pain.addWound(new Wound(damageType, severity, bodyPart));
+                    }
                 }
 
                 //~~ pain.addChronicPain(event.getAmount() * 4);
@@ -248,49 +256,154 @@ public class RealisticDamage {
 
     private static String classifyDamage(DamageSource source, Entity directEntity) {
         //TODO add fracture and hematoma
+        //TODO magic damage, wither damage
+        //TODO make lava more than just a burn
         if (source.is(DamageTypes.IN_FIRE) ||
                 source.is(DamageTypes.ON_FIRE) ||
                 source.is(DamageTypes.LAVA) ||
-                source.is(DamageTypes.HOT_FLOOR)) {
+                source.is(DamageTypes.HOT_FLOOR) ||
+                source.is(DamageTypes.LIGHTNING_BOLT) ||
+                source.is(DamageTypes.DRAGON_BREATH) ||
+                source.is(DamageTypes.FREEZE) ||
+                source.is(DamageTypes.FIREWORKS) ||
+                source.is(DamageTypes.FIREBALL) ||
+                source.is(DamageTypes.UNATTRIBUTED_FIREBALL) ||
+                source.is(DamageTypes.WITHER_SKULL) ||
+                source.is(DamageTypes.EXPLOSION) ||
+                source.is(DamageTypes.PLAYER_EXPLOSION)) {
             return "burn";
         }
 
-        if (directEntity instanceof Player) {
+        if (source.is(DamageTypes.PLAYER_ATTACK)) {
             Player attacker = (Player) directEntity;
             ItemStack weapon = attacker.getMainHandItem();
             if (weapon.getItem() instanceof SwordItem ||
                     weapon.getItem() instanceof AxeItem) {
-                return "incision";
+                return "laceration";
             }
+            else{
+                return "blunt"; // TODO If this is tier 3+ make it a laceration, otherwise make it a hematoma
+            }
+        }
+
+        if(source.is(DamageTypes.MOB_ATTACK) ||
+                source.is(DamageTypes.MOB_ATTACK_NO_AGGRO)){
+            for (ItemStack itemStack : directEntity.getHandSlots()){;
+                if (!itemStack.isEmpty()){
+                    if(itemStack.getItem() instanceof SwordItem ||
+                    itemStack.getItem() instanceof AxeItem){
+                        return "laceration";
+                    }
+                }
+                else{
+                    return "blunt"; // TODO If this is tier 3+ make it a laceration, otherwise make it a hematoma
+                }
+            }
+        }
+
+        //TODO probably doesn't work and doesn't really need to but it'd be kinda cool
+        if (source.is(DamageTypes.THORNS)) {
+            if (directEntity != null) {
+                // Get the last damage source we used against them
+                DamageSource lastDamageSource = ((LivingEntity)directEntity).getLastDamageSource();
+                if (lastDamageSource != null) {
+                    return classifyDamage(lastDamageSource, lastDamageSource.getDirectEntity());
+                }
+            }
+            return "blunt";
+        }
+
+        if (source.is(DamageTypes.MOB_PROJECTILE)) {
+            if (directEntity instanceof LlamaSpit) {
+                return "hematoma";
+            }
+
+            if (directEntity instanceof ShulkerBullet) {
+                return "blunt";
+            }
+
+            if (directEntity instanceof DragonFireball) {
+                return "burn";
+            }
+
+            if (directEntity instanceof WitherSkull) {
+                return "burn";
+            }
+
+            if (directEntity instanceof SmallFireball) {
+                return "burn";
+            }
+
+            if (directEntity instanceof LargeFireball) {
+                return "burn";
+            }
+
+            return "vanilla";
+
         }
 
         if (directEntity instanceof Arrow ||
                 directEntity instanceof ThrownTrident ||
                 source.is(DamageTypes.ARROW) ||
-                source.is(DamageTypes.TRIDENT)) {
+                source.is(DamageTypes.TRIDENT) ||
+                source.is(DamageTypes.FALLING_STALACTITE) ||
+                source.is(DamageTypes.STALAGMITE) ||
+                source.is(DamageTypes.STING)) {
             return "puncture";
         }
 
         if (source.is(DamageTypes.FALL) ||
                 source.is(DamageTypes.FLY_INTO_WALL) ||
+                source.is(DamageTypes.FALLING_ANVIL) ||
                 source.is(DamageTypes.FALLING_BLOCK)) {
-            return "laceration";
+            return "fracture";
         }
 
         if (source.is(DamageTypes.SWEET_BERRY_BUSH) ||
-                source.is(DamageTypes.CACTUS) ||
-                source.is(DamageTypes.CRAMMING)) {
+                source.is(DamageTypes.CACTUS)) {
             return "abrasion";
         }
 
-        if (source.is(DamageTypes.MOB_ATTACK) ||
-                source.is(DamageTypes.GENERIC)) {
-            return "laceration";
+        if(source.is(DamageTypes.IN_WALL) ||
+                source.is(DamageTypes.CRAMMING) ||
+                source.is(DamageTypes.DROWN)){
+            return "suffocation";
         }
 
-        return "incision"; // Unknown damage type
+        if(source.is(DamageTypes.STARVE) ||
+                source.is(DamageTypes.FELL_OUT_OF_WORLD) ||
+                source.is(DamageTypes.GENERIC) ||
+                source.is(DamageTypes.MAGIC) ||
+                source.is(DamageTypes.WITHER) ||
+                source.is(DamageTypes.BAD_RESPAWN_POINT) ||
+                source.is(DamageTypes.OUTSIDE_BORDER) ||
+                source.is(DamageTypes.GENERIC_KILL) ||
+                source.is(DamageTypes.INDIRECT_MAGIC)){
+            return "vanilla"; // Handled the same as without the mod
+        }
+
+
+        return "vanilla"; // Unknown damage type
     }
 
+
+    private static String getWoundLocation() {
+        final String[] BODY_PARTS = {"head", "chest", "left arm", "right arm", "left leg", "right leg", "left foot", "right foot"};
+        final int[] WEIGHTS = {10, 30, 15, 15, 12, 12, 3, 3};
+        Random r = new Random();
+        int maxScore = Integer.MIN_VALUE;
+        String selectedPart = "";
+
+        for (int i = 0; i < BODY_PARTS.length; i++) {
+            int score = r.nextInt(WEIGHTS[i] + 1); // Value from 0 to the weight
+            if (score > maxScore) {
+                maxScore = score;
+                selectedPart = BODY_PARTS[i];
+            }
+        }
+
+        return selectedPart;
+    }
 
     private static String detectHitBodyPart(Player player, Arrow arrow) {
         Vec3 arrowPos = arrow.position();

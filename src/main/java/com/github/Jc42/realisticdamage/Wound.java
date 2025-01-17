@@ -16,9 +16,10 @@ public class Wound {
     private String bodyPart;
     private int ticksRemaining;
     private int pain;
-    private final int SEVERITY_ONE_TICKS = 12000; // 0.5 days
-    private final int SEVERITY_TWO_TICKS = 36000; // 1.5 days
-    private final int SEVERITY_THREE_TICKS = 72000; // 3 days
+    private final int SEVERITY_ZERO_TICKS = 800; // ~40 seconds
+    private final int SEVERITY_ONE_TICKS = 12000; // ~10 minutes
+    private final int SEVERITY_TWO_TICKS = 36000; // ~30 minutes
+    private final int SEVERITY_THREE_TICKS = 72000; // ~1 hour
 
     /**
      * If severity is set to 3 and type is an open wound there is a 10% chance of the wound being fatal (bleeding cannot be fully stopped)
@@ -26,8 +27,7 @@ public class Wound {
      * @param type     <h4>The type of wound - stored in lowercase</h4>
      *                 <h6>Open Wounds:</h6>
      *                 <ol>
-     *                 <li>Incision - Wound caused by a sharp-edged object</li>
-     *                 <li>Laceration - Wound caused by some blunt trauma</li>
+     *                 <li>Laceration - Wound caused by a sharp-edged or blunt object piercing the skin</li>
      *                 <li>Abrasion - Wound to the top most layer of skin (scrape)</li>
      *                 <li>Puncture - Wound caused by an object puncturing the skin</li>
      *                 </ol>
@@ -37,7 +37,7 @@ public class Wound {
      *                 <li>Fracture - Wound consisting of a partial or complete break in a bone</li>
      *                 <li>Burn - Wound caused by extreme temperature</li>
      *                 </ol>
-     * @param severity The severity of the wound ranging from 1-3
+     * @param severity The severity of the wound ranging from 0-3
      * @param bodyPart The location of the wound - stored in lowercase.
      *                 <h6>Can be:</h6>
      *                 <ul>
@@ -60,6 +60,9 @@ public class Wound {
         int isFatalRoll = r.nextInt(101);
 
         //24000 = 1 day
+        if(severity == 0){
+            ticksRemaining = SEVERITY_ZERO_TICKS; // .03 days
+        }
         if(severity == 1){
             ticksRemaining = SEVERITY_ONE_TICKS; //.5 days
         }
@@ -73,30 +76,26 @@ public class Wound {
         //TODO add a bleed amount to the wounds
         //Set fatal if severity is 3, type is an open wound, and isFatalRoll <= 10
         switch (this.type){
-            case "incision":
-                isFatal = isFatalRoll <= 10 && this.severity == 3;
-                pain = this.severity == 1 ? 15 : (this.severity == 2 ? 40 : 85);
-                break;
             case "laceration":
                 isFatal = isFatalRoll <= 10 && this.severity == 3;
-                pain = this.severity == 1 ? 15 : (this.severity == 2 ? 40 : 85);
+                pain = this.severity == 0 ? 10 : (this.severity == 1 ? 25 : (this.severity == 2 ? 40 : 80));
                 break;
             case "abrasion":
                 isFatal = isFatalRoll <= 10 && this.severity == 3;
-                pain = this.severity == 1 ? 5 : (this.severity == 2 ? 20 : 40);
+                pain = this.severity == 0 ? 10 : (this.severity == 1 ? 25 : (this.severity == 2 ? 40 : 80));
                 break;
             case "puncture":
                 isFatal = isFatalRoll <= 10 && this.severity == 3;
-                pain = this.severity == 1 ? 5 : (this.severity == 2 ? 40 : 80);
+                pain = this.severity == 0 ? 10 : (this.severity == 1 ? 25 : (this.severity == 2 ? 40 : 80));
                 break;
             case "hematoma":
-                pain = this.severity == 1 ? 10 : (this.severity == 2 ? 20 : 30);
+                pain = this.severity == 0 ? 10 : (this.severity == 1 ? 25 : (this.severity == 2 ? 40 : 80));
                 break;
             case "fracture":
-                pain = this.severity == 1 ? 30 : (this.severity == 2 ? 60 : 85);
+                pain = this.severity == 0 ? 10 : (this.severity == 1 ? 25 : (this.severity == 2 ? 40 : 80));
                 break;
             case "burn":
-                pain = this.severity == 1 ? 10 : (this.severity == 2 ? 20 : 30);
+                pain = this.severity == 0 ? 10 : (this.severity == 1 ? 25 : (this.severity == 2 ? 40 : 80));
                 break;
         }
 

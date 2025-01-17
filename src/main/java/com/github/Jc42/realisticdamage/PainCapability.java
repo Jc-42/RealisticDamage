@@ -101,7 +101,7 @@ class PainCapability implements IPainCapability {
         ListTag woundsTag = nbt.getList("wounds", 10); // 10 for CompoundTag
         for (int i = 0; i < woundsTag.size(); i++) {
             CompoundTag woundTag = woundsTag.getCompound(i);
-            Wound wound = new Wound("Incision", 1, "Head"); // Create a new instance
+            Wound wound = new Wound("Laceration", 1, "Head"); // Create a new instance
             wound.deserializeNBT(woundTag); // Populate it from the tag
             wounds.add(wound);
         }
