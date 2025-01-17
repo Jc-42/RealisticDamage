@@ -7,6 +7,7 @@ import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -26,6 +27,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.*;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.ticks.TickPriority;
 import net.minecraftforge.api.distmarker.Dist;
@@ -181,7 +183,7 @@ public class RealisticDamage {
             player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
                 DamageSource damageSource = event.getSource();
                 Entity directEntity = damageSource.getDirectEntity();
-                String damageType = classifyDamage(damageSource, directEntity);
+                String[] damageType = classifyDamage(damageSource, directEntity, player);
                 //TODO figure out dammage types
                 //player.sendSystemMessage(Component.literal("SOURCE: " + damageSource + " " + damageSource.));
 
@@ -221,15 +223,15 @@ public class RealisticDamage {
                     player.sendSystemMessage(Component.literal("Player hit in the " + hitBodyPart + " " + event.getAmount()));
                 }
                 else{
-                    if(!damageType.equals("vanilla")) {
+                    if(!damageType[0].equals("vanilla")) {
                         float fractionLost = event.getAmount() / player.getMaxHealth();
                         int severity = fractionLost >= .6 ? 3 : (fractionLost >= .4 ? 2 : (fractionLost >= .25 ? 1 : 0));
-                        if(damageType.equals("blunt")){
-                            if(severity == 3) damageType = "laceration";
-                            else damageType = "hematoma";
+                        if(damageType[0].equals("blunt")){
+                            if(severity == 3) damageType[0] = "laceration";
+                            else damageType[0] = "hematoma";
                         }
-                        String bodyPart = getWoundLocation();
-                        pain.addWound(new Wound(damageType, severity, bodyPart));
+                        String bodyPart = damageType.length > 1 ? getWoundLocation(new ArrayList<>(Arrays.asList(Arrays.copyOfRange(damageType, 1, damageType.length)))) : getWoundLocation(null);
+                        pain.addWound(new Wound(damageType[0], severity, bodyPart));
                     }
                 }
 
@@ -254,7 +256,7 @@ public class RealisticDamage {
         }
     }
 
-    private static String classifyDamage(DamageSource source, Entity directEntity) {
+    private static String[] classifyDamage(DamageSource source, Entity directEntity, Player player) {
         //TODO add fracture and hematoma
         //TODO magic damage, wither damage
         //TODO make lava more than just a burn
@@ -271,7 +273,59 @@ public class RealisticDamage {
                 source.is(DamageTypes.WITHER_SKULL) ||
                 source.is(DamageTypes.EXPLOSION) ||
                 source.is(DamageTypes.PLAYER_EXPLOSION)) {
-            return "burn";
+            if(source.is(DamageTypes.IN_FIRE) || source.is(DamageTypes.HOT_FLOOR)){
+                Random r = new Random();
+                return new String[]{"burn", "left foot" , "right foot"};
+            }
+
+            if (source.is(DamageTypes.LAVA)) {
+                List<String> affectedParts = new ArrayList<>();
+                affectedParts.add("burn");  // Always add burn as first element
+
+                // Get the lava height - start at player's feet and look up for lava blocks
+                BlockPos pos = player.blockPosition();
+                Level world = player.level();
+                double lavaHeight = 0;
+
+                // Search up to player height for highest lava block
+                for (int y = 0; y <= player.getBbHeight(); y++) {
+                    BlockPos checkPos = pos.above(y);
+                    if (world.getBlockState(checkPos).getBlock() instanceof LiquidBlock) {
+                        lavaHeight = checkPos.getY() + 1; // Add 1 because lava fills the block
+                    }
+                }
+
+                double entityY = player.getY();
+                double entityHeight = player.getBbHeight();
+
+                // Feet level (0-10% of height)
+                if (entityY <= lavaHeight) {
+                    affectedParts.add("left foot");
+                    affectedParts.add("right foot");
+                }
+
+                // Legs level (10-45% of height)
+                if (entityY + (entityHeight * 0.45) <= lavaHeight) {
+                    affectedParts.add("left leg");
+                    affectedParts.add("right leg");
+                }
+
+                // Torso level (45-75% of height)
+                if (entityY + (entityHeight * 0.75) <= lavaHeight) {
+                    affectedParts.add("torso");
+                    affectedParts.add("left arm");
+                    affectedParts.add("right arm");
+                }
+
+                // Head level (75-100% of height)
+                if (player.getEyeY() <= lavaHeight) {
+                    affectedParts.add("head");
+                    affectedParts.add("face");
+                }
+
+                return affectedParts.toArray(new String[0]);
+            }
+            return new String[]{"burn"};
         }
 
         if (source.is(DamageTypes.PLAYER_ATTACK)) {
@@ -279,10 +333,10 @@ public class RealisticDamage {
             ItemStack weapon = attacker.getMainHandItem();
             if (weapon.getItem() instanceof SwordItem ||
                     weapon.getItem() instanceof AxeItem) {
-                return "laceration";
+                return new String[]{"laceration"};
             }
             else{
-                return "blunt"; // TODO If this is tier 3+ make it a laceration, otherwise make it a hematoma
+                return new String[]{"blunt"}; // TODO If this is tier 3+ make it a laceration, otherwise make it a hematoma
             }
         }
 
@@ -292,11 +346,11 @@ public class RealisticDamage {
                 if (!itemStack.isEmpty()){
                     if(itemStack.getItem() instanceof SwordItem ||
                     itemStack.getItem() instanceof AxeItem){
-                        return "laceration";
+                        return new String[]{"laceration"};
                     }
                 }
                 else{
-                    return "blunt"; // TODO If this is tier 3+ make it a laceration, otherwise make it a hematoma
+                    return new String[]{"blunt"}; // TODO If this is tier 3+ make it a laceration, otherwise make it a hematoma
                 }
             }
         }
@@ -307,38 +361,38 @@ public class RealisticDamage {
                 // Get the last damage source we used against them
                 DamageSource lastDamageSource = ((LivingEntity)directEntity).getLastDamageSource();
                 if (lastDamageSource != null) {
-                    return classifyDamage(lastDamageSource, lastDamageSource.getDirectEntity());
+                    return classifyDamage(lastDamageSource, lastDamageSource.getDirectEntity(), player);
                 }
             }
-            return "blunt";
+            return new String[]{"blunt"};
         }
 
         if (source.is(DamageTypes.MOB_PROJECTILE)) {
             if (directEntity instanceof LlamaSpit) {
-                return "hematoma";
+                return new String[]{"hematoma"};
             }
 
             if (directEntity instanceof ShulkerBullet) {
-                return "blunt";
+                return new String[]{"blunt"};
             }
 
             if (directEntity instanceof DragonFireball) {
-                return "burn";
+                return new String[]{"burn"};
             }
 
             if (directEntity instanceof WitherSkull) {
-                return "burn";
+                return new String[]{"burn"};
             }
 
             if (directEntity instanceof SmallFireball) {
-                return "burn";
+                return new String[]{"burn"};
             }
 
             if (directEntity instanceof LargeFireball) {
-                return "burn";
+                return new String[]{"burn"};
             }
 
-            return "vanilla";
+            return new String[]{"vanilla"};
 
         }
 
@@ -349,25 +403,33 @@ public class RealisticDamage {
                 source.is(DamageTypes.FALLING_STALACTITE) ||
                 source.is(DamageTypes.STALAGMITE) ||
                 source.is(DamageTypes.STING)) {
-            return "puncture";
+            return new String[]{"puncture"};
         }
 
         if (source.is(DamageTypes.FALL) ||
                 source.is(DamageTypes.FLY_INTO_WALL) ||
                 source.is(DamageTypes.FALLING_ANVIL) ||
                 source.is(DamageTypes.FALLING_BLOCK)) {
-            return "fracture";
+            if(source.is(DamageTypes.FALL)){
+                Random r = new Random();
+                return new String[]{"fracture", "left foot", "right foot", "left leg", "right leg"};
+
+            }
+            if(source.is(DamageTypes.FALLING_BLOCK) || source.is(DamageTypes.FALLING_ANVIL)){
+                return new String[]{"fracture", "head"};
+            }
+            return new String[]{"fracture"};
         }
 
         if (source.is(DamageTypes.SWEET_BERRY_BUSH) ||
                 source.is(DamageTypes.CACTUS)) {
-            return "abrasion";
+            return new String[]{"abrasion"};
         }
 
         if(source.is(DamageTypes.IN_WALL) ||
                 source.is(DamageTypes.CRAMMING) ||
                 source.is(DamageTypes.DROWN)){
-            return "suffocation";
+            return new String[]{"suffocation"};
         }
 
         if(source.is(DamageTypes.STARVE) ||
@@ -379,15 +441,15 @@ public class RealisticDamage {
                 source.is(DamageTypes.OUTSIDE_BORDER) ||
                 source.is(DamageTypes.GENERIC_KILL) ||
                 source.is(DamageTypes.INDIRECT_MAGIC)){
-            return "vanilla"; // Handled the same as without the mod
+            return new String[]{"vanilla"}; // Handled the same as without the mod
         }
 
 
-        return "vanilla"; // Unknown damage type
+        return new String[]{"vanilla"}; // Unknown damage type
     }
 
 
-    private static String getWoundLocation() {
+    private static String getWoundLocation(ArrayList<String> include) {
         final String[] BODY_PARTS = {"head", "chest", "left arm", "right arm", "left leg", "right leg", "left foot", "right foot"};
         final int[] WEIGHTS = {10, 30, 15, 15, 12, 12, 3, 3};
         Random r = new Random();
@@ -395,6 +457,7 @@ public class RealisticDamage {
         String selectedPart = "";
 
         for (int i = 0; i < BODY_PARTS.length; i++) {
+            if(include != null && !include.contains(BODY_PARTS[i])) continue;
             int score = r.nextInt(WEIGHTS[i] + 1); // Value from 0 to the weight
             if (score > maxScore) {
                 maxScore = score;
