@@ -1,9 +1,6 @@
 package com.github.Jc42.realisticdamage;
 
-import net.minecraft.client.Minecraft;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.chat.Component;
-import net.minecraft.world.entity.player.Player;
 
 import java.util.Random;
 

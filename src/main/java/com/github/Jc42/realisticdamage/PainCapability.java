@@ -5,30 +5,22 @@ import net.minecraft.nbt.ListTag;
 
 import java.util.ArrayList;
 
-class PainCapability implements IPainCapability {
+public class PainCapability{
     private float chronicPainLevel = 0;
     private float bleedLevel = 0;
     private float adrenalineLevel = 0;
     private ArrayList<Wound> wounds = new ArrayList<>();
     private ArrayList<double[]> lodgedArrowPositions = new ArrayList<>();
 
-//    @Override
-//    public void addChronicPain(float amount) {
-//        this.chronicPainLevel += amount;
-//    }
-
-    @Override
     public void addAdrenaline(float amount) {
         this.adrenalineLevel += amount;
     }
 
-    @Override
     public float getChronicPainLevel() {
         calculateChronicPainLevel();
         return this.chronicPainLevel;
     }
 
-    @Override
     public float getBleedLevel() {
         float maxBleed = 0;
 
@@ -42,7 +34,6 @@ class PainCapability implements IPainCapability {
 
 
 
-    @Override
     public void calculateChronicPainLevel() {
         float maxPain = 0;
 
@@ -55,44 +46,32 @@ class PainCapability implements IPainCapability {
         this.chronicPainLevel = maxPain;
     }
 
-    @Override
     public float getAdrenalineLevel() {
         return this.adrenalineLevel;
     }
 
-    @Override
     public void addWound(Wound w){
         wounds.add(w);
     }
 
-    @Override
     public ArrayList<Wound> getWounds() {
         return wounds;
     }
 
-    @Override
     public void tickWounds(){
         for(int i = 0; i < wounds.size(); i++){
             if(wounds.get(i).tick() <= 0) wounds.remove(i--);
         }
     }
 
-//    @Override
-//    public void setChronicPainLevel(float level) {
-//        this.chronicPainLevel = level;
-//    }
-
-    @Override
     public void setAdrenalineLevel(float level) {
         this.adrenalineLevel = level;
     }
 
-    @Override
     public ArrayList<double[]> getLodgedArrowPositions(){
         return lodgedArrowPositions;
     }
 
-    @Override
     public CompoundTag serializeNBT() {
         CompoundTag tag = new CompoundTag();
         tag.putFloat("chronicPainLevel", getChronicPainLevel());
@@ -108,7 +87,6 @@ class PainCapability implements IPainCapability {
         return tag;
     }
 
-    @Override
     public void deserializeNBT(CompoundTag nbt) {
         this.chronicPainLevel = nbt.getFloat("chronicPainLevel");
         this.adrenalineLevel = nbt.getFloat("adrenalineLevel");

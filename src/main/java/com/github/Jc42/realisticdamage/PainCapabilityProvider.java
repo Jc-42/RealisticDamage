@@ -8,17 +8,16 @@ import net.minecraftforge.common.capabilities.CapabilityToken;
 import net.minecraftforge.common.capabilities.ICapabilityProvider;
 import net.minecraftforge.common.util.INBTSerializable;
 import net.minecraftforge.common.util.LazyOptional;
-
-import java.util.ArrayList;
+import org.jetbrains.annotations.NotNull;
 
 public class PainCapabilityProvider implements ICapabilityProvider, INBTSerializable<CompoundTag> {
-    public static final Capability<IPainCapability> PAIN_CAPABILITY = CapabilityManager.get(new CapabilityToken<>() {});
+    public static final Capability<PainCapability> PAIN_CAPABILITY = CapabilityManager.get(new CapabilityToken<>() {});
 
-    private final IPainCapability instance = new PainCapability();
-    private final LazyOptional<IPainCapability> holder = LazyOptional.of(() -> instance);
+    private final PainCapability instance = new PainCapability();
+    private final LazyOptional<PainCapability> holder = LazyOptional.of(() -> instance);
 
     @Override
-    public <T> LazyOptional<T> getCapability(Capability<T> cap, Direction side) {
+    public <T> @NotNull LazyOptional<T> getCapability(@NotNull Capability<T> cap, Direction side) {
         return PAIN_CAPABILITY.orEmpty(cap, holder);
     }
 
@@ -30,9 +29,5 @@ public class PainCapabilityProvider implements ICapabilityProvider, INBTSerializ
     @Override
     public void deserializeNBT(CompoundTag nbt) {
         instance.deserializeNBT(nbt);
-    }
-
-    public void invalidate() {
-        holder.invalidate();
     }
 }

@@ -49,7 +49,7 @@ public abstract class CustomArrowPincushion<T extends LivingEntity, M extends Pl
                 ArrayList<double[]> arrows = pain.getLodgedArrowPositions();
 
 
-                RandomSource randomsource = RandomSource.create((long) entity.getId());
+                RandomSource randomsource = RandomSource.create(entity.getId());
                 if (i > 0) {
                     for (int j = 0; j < i; ++j) {
                         poseStack.pushPose();

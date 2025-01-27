@@ -3,19 +3,12 @@ package com.github.Jc42.realisticdamage.mixins;
 import com.github.Jc42.realisticdamage.PainCapabilityProvider;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.model.PlayerModel;
-import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
-import net.minecraft.client.renderer.entity.RenderLayerParent;
 import net.minecraft.client.renderer.entity.layers.ArrowLayer;
-import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.projectile.Arrow;
-import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -36,7 +29,6 @@ public abstract class CustomArrowPincushionRotation {
         entity.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
             ArrayList<double[]> arrows = pain.getLodgedArrowPositions();
 
-            float f = Mth.sqrt(x * x + z * z);
             Arrow arrow = new Arrow(entity.level(), entity.getX(), entity.getY(), entity.getZ());
 
             if (arrows != null) {

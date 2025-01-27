@@ -8,13 +8,9 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RegisterGuiOverlaysEvent;
 import net.minecraftforge.client.gui.overlay.ForgeGui;
 import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay;
-import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.fml.common.Mod;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.awt.*;
-import java.util.Random;
 
 public class PainOverlayHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger(PainOverlayHandler.class);
@@ -24,9 +20,6 @@ public class PainOverlayHandler {
     {
         Minecraft minecraft = Minecraft.getInstance();
 
-        // Do nothing if thirst is disabled
-        //if (!ServerConfig.enableThirst.get())
-        //    return;
 
         Player player = minecraft.player;
 

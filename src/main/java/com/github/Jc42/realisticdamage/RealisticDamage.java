@@ -8,7 +8,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -42,7 +41,6 @@ import net.minecraftforge.event.entity.living.LivingEvent;
 import net.minecraftforge.event.entity.living.LivingHurtEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
-import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.eventbus.api.Event;
 import net.minecraftforge.eventbus.api.EventPriority;
@@ -78,12 +76,8 @@ public class RealisticDamage {
     public static final String MODID = "realisticdamage";
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    private static long lastActionTime = -1;
     private static long lastJumpTime = -1;
     private static long lastAdrenalineRushTime = -1;
-
-    private static boolean cancelAttack = false;
-    private static boolean cancelUse = false;
 
     private static boolean lastAdrenalineRushReset = false;
     //In milliseconds
@@ -194,7 +188,7 @@ public class RealisticDamage {
     public static class ModEventBusEvents {
         @SubscribeEvent
         public static void registerCapabilities(RegisterCapabilitiesEvent event) {
-            event.register(IPainCapability.class);
+            event.register(PainCapability.class);
             LOGGER.debug("Registering pain capabilities");
         }
     }
@@ -254,16 +248,6 @@ public class RealisticDamage {
                     //TODO head code sets it to right arm?
                     //TODO it never triggers the left arm or the left leg
 
-//                   if (hitBodyPart.equals("head")) {
-//                       arrow.setPos(player.getX(), player.getY() + player.getBbHeight() * 0.9, player.getZ());  //Example for head
-//                   } else if (hitBodyPart.equals("arm")) {
-//                       arrow.setPos(player.getX() + 0.3, player.getY() + player.getBbHeight() * 0.6, player.getZ());  //Example for arm
-//                   } else if (hitBodyPart.equals("chest")) {
-//                       arrow.setPos(player.getX(), player.getY() + player.getBbHeight() * 0.5, player.getZ());  //Example for chest
-//                   } else {
-//                       arrow.setPos(player.getX(), player.getY() + player.getBbHeight() * 0.2, player.getZ());  //Example for leg
-//                   }
-
                     //TODO remove this later and specify which leg / arm
                     if(hitBodyPart.equals("arm") || hitBodyPart.equals("leg")) hitBodyPart = "left " + hitBodyPart;
 
@@ -288,8 +272,6 @@ public class RealisticDamage {
                     }
                 }
 
-                //~~ pain.addChronicPain(event.getAmount() * 4);
-
                 player.sendSystemMessage(Component.literal("" + pain.getChronicPainLevel()));
                 if (System.currentTimeMillis() - lastAdrenalineRushTime > adrenalineRushCooldown && pain.getAdrenalineLevel() == 0) {
                     if (pain.getChronicPainLevel() >= 30) {
@@ -297,12 +279,11 @@ public class RealisticDamage {
                         lastAdrenalineRushReset = false;
                     }
                 }
-                //~~ if (pain.getChronicPainLevel() < 0) pain.setChronicPainLevel(0);
+
                 if (pain.getAdrenalineLevel() < 0) pain.setAdrenalineLevel(0);
-                //~~ if (pain.getChronicPainLevel() > 100) pain.setChronicPainLevel(100);
+
                 if (pain.getAdrenalineLevel() > 100) pain.setAdrenalineLevel(100);
                 if (player instanceof ServerPlayer) {
-                    //~~ PacketHandler.sendToPlayer(new CPainLevelPacket(pain.getChronicPainLevel(), pain.getAdrenalineLevel()), () -> (ServerPlayer) player);
                     PacketHandler.sendToPlayer(new CPainLevelPacket(pain.getAdrenalineLevel(), pain.getWounds()), () -> (ServerPlayer) player);
                 }
             });
@@ -607,10 +588,7 @@ public class RealisticDamage {
                                 if(pain.getWounds().get(i).tick() <= 0) pain.getWounds().remove(i--);
                                 player.setHealth(player.getHealth() - pain.getBleedLevel() / 10000);
                             }
-                            //~~ pain.addChronicPain(-.05f); //Chronic pain lowers by 1 per second
                         }
-                        //~~ if (pain.getChronicPainLevel() < 0) pain.setChronicPainLevel(0);
-                        //~~ if (pain.getChronicPainLevel() > 100) pain.setChronicPainLevel(100);
                     }
 
                     if (pain.getAdrenalineLevel() > 0) {
@@ -624,22 +602,12 @@ public class RealisticDamage {
                     }
 
                     if (player.isCreative()) {
-                        //~~ pain.setChronicPainLevel(0);
                         pain.getWounds().clear();
                         pain.setAdrenalineLevel(0);
                         lastAdrenalineRushTime = 0;
                     }
 
                     updateModifiers(player, pain);
-
-                    //Objects.requireNonNull(player.getAttribute(Attributes.MOVEMENT_SPEED)).setBaseValue(Math.max(VANILLA_BASE_SPEED - (pain.getChronicPainLevel() * .00111111), 0));
-
-                    //Lower attach speed such that at 90 pain attack speed = 0
-                    //Objects.requireNonNull(player.getAttribute(Attributes.ATTACK_SPEED)).setBaseValue(Math.max(VANILLA_BASE_SPEED - (pain.getChronicPainLevel() * .00111111), 0));
-                    //player.getAttribute()
-
-                    //~~ PacketHandler.sendToPlayer(new CPainLevelPacket(pain.getChronicPainLevel(), pain.getAdrenalineLevel()), () -> (ServerPlayer) player);
-
                     PacketHandler.sendToPlayer(new CPainLevelPacket(pain.getAdrenalineLevel(), pain.getWounds()), () -> (ServerPlayer) player);
                 });
             }
@@ -729,18 +697,6 @@ public class RealisticDamage {
                 event.setUseItem(Event.Result.DENY);
             }
         });
-    }
-
-    //set the lastActionTime
-    @SubscribeEvent(priority = EventPriority.LOWEST)
-    public void onBlockPlace(BlockEvent.EntityPlaceEvent event) {
-        //Reset the action time here because sometimes the RClickBlock code says allowed but then minecraft denys it
-        Objects.requireNonNull(event.getEntity()).getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
-            if (pain.getAdrenalineLevel() == 0) {
-                lastActionTime = System.currentTimeMillis();
-            }
-        });
-
     }
 
     //Set the lastJumpTime
@@ -877,7 +833,7 @@ public class RealisticDamage {
     }
 
     //Update the players modifiers such as speed, attack speed, jump cooldown, action cooldown, etc.
-    private static void updateModifiers(Player player, IPainCapability pain) {
+    private static void updateModifiers(Player player, PainCapability pain) {
         AttributeInstance movementSpeed = player.getAttribute(Attributes.MOVEMENT_SPEED);
 
         if (movementSpeed != null) {
@@ -909,7 +865,7 @@ public class RealisticDamage {
             AttributeModifier existingModifier = attackSpeed.getModifier(PAIN_ATTACK_SPEED_MODIFIER_ID);
             if (existingModifier != null) {
 
-                //Lower speed such that 90 pain = 0 speed
+                //Lower attack speed such that 90 pain = 0 speed
                 double attackSpeedScale = Math.max(Math.min((((maxAttackSpeedScale - minAttackSpeedScale) / (startAttackSpeedScale - endAttackSpeedScale)) * (pain.getChronicPainLevel() - endAttackSpeedScale)) + minAttackSpeedScale, maxAttackSpeedScale), minAttackSpeedScale);
                 attackSpeedScale -= 1; //Reduce it by 1 as Minecraft takes our values and adds 1 to it
                 if (pain.getAdrenalineLevel() != 0) attackSpeedScale = 7; //8 times
