@@ -8,6 +8,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -26,10 +27,9 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.*;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CactusBlock;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.phys.Vec3;
-import net.minecraft.world.ticks.TickPriority;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import net.minecraftforge.client.event.ScreenEvent;
@@ -43,6 +43,7 @@ import net.minecraftforge.event.entity.living.LivingHurtEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.level.BlockEvent;
+import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.eventbus.api.Event;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.IEventBus;
@@ -52,17 +53,19 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.config.ModConfig;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+import net.minecraftforge.registries.ForgeRegistries;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import net.minecraftforge.client.event.InputEvent;
 
-import javax.swing.event.MouseInputAdapter;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.nio.file.Files;
 import java.util.*;
 
 
-// The value here should match an entry in the META-INF/mods.toml file
+//The value here should match an entry in the META-INF/mods.toml file
 @Mod(RealisticDamage.MODID)
 @Mod.EventBusSubscriber(modid = RealisticDamage.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class RealisticDamage {
@@ -86,6 +89,8 @@ public class RealisticDamage {
     //In milliseconds
     private static final long ACTION_COOLDOWN = 1000;
     private static float jumpCooldown = 0;
+
+    private static final Map<String, String> mobWoundTypes = new HashMap<>();
 
     //region Config Variables
     private static long adrenalineRushCooldown = 60000;
@@ -173,6 +178,52 @@ public class RealisticDamage {
             }
         });
     }
+
+    //Attach the pain capability and add the movement modifier
+    @SubscribeEvent
+    public static void onAttachCapabilitiesPlayer(AttachCapabilitiesEvent<Entity> attachEvent) {
+        if (attachEvent.getObject() instanceof Player) {
+            if (!attachEvent.getObject().getCapability(PainCapabilityProvider.PAIN_CAPABILITY).isPresent()) {
+                attachEvent.addCapability(new ResourceLocation(MODID, "pain"), new PainCapabilityProvider());
+            }
+        }
+    }
+
+    //Register the pain capability
+    @Mod.EventBusSubscriber(modid = RealisticDamage.MODID, bus = Mod.EventBusSubscriber.Bus.MOD)
+    public static class ModEventBusEvents {
+        @SubscribeEvent
+        public static void registerCapabilities(RegisterCapabilitiesEvent event) {
+            event.register(IPainCapability.class);
+            LOGGER.debug("Registering pain capabilities");
+        }
+    }
+
+    //Add the player attributes when the player joins the world
+    @SubscribeEvent
+    public static void onEntityJoinWorld(EntityJoinLevelEvent event) {
+        if (event.getEntity() instanceof Player player) {
+            player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
+                AttributeInstance movementSpeed = player.getAttribute(Attributes.MOVEMENT_SPEED);
+
+                if (movementSpeed != null) {
+
+                    if (movementSpeed.getModifier(PAIN_MOVEMENT_SPEED_MODIFIER_ID) == null) {
+                        AttributeModifier speedModifier = new AttributeModifier(
+                                PAIN_MOVEMENT_SPEED_MODIFIER_ID,
+                                "Chronic Pain Speed Reduction",
+                                0, //Start with no effect
+                                AttributeModifier.Operation.MULTIPLY_TOTAL
+                        );
+                        movementSpeed.addPermanentModifier(speedModifier);
+                    }
+                }
+
+                updateModifiers(player, pain);
+            });
+        }
+    }
+
     //endregion
 
     //Update pain level and send pain packet
@@ -203,15 +254,15 @@ public class RealisticDamage {
                     //TODO head code sets it to right arm?
                     //TODO it never triggers the left arm or the left leg
 
-//                    if (hitBodyPart.equals("head")) {
-//                        arrow.setPos(player.getX(), player.getY() + player.getBbHeight() * 0.9, player.getZ());  // Example for head
-//                    } else if (hitBodyPart.equals("arm")) {
-//                        arrow.setPos(player.getX() + 0.3, player.getY() + player.getBbHeight() * 0.6, player.getZ());  // Example for arm
-//                    } else if (hitBodyPart.equals("chest")) {
-//                        arrow.setPos(player.getX(), player.getY() + player.getBbHeight() * 0.5, player.getZ());  // Example for chest
-//                    } else {
-//                        arrow.setPos(player.getX(), player.getY() + player.getBbHeight() * 0.2, player.getZ());  // Example for leg
-//                    }
+//                   if (hitBodyPart.equals("head")) {
+//                       arrow.setPos(player.getX(), player.getY() + player.getBbHeight() * 0.9, player.getZ());  //Example for head
+//                   } else if (hitBodyPart.equals("arm")) {
+//                       arrow.setPos(player.getX() + 0.3, player.getY() + player.getBbHeight() * 0.6, player.getZ());  //Example for arm
+//                   } else if (hitBodyPart.equals("chest")) {
+//                       arrow.setPos(player.getX(), player.getY() + player.getBbHeight() * 0.5, player.getZ());  //Example for chest
+//                   } else {
+//                       arrow.setPos(player.getX(), player.getY() + player.getBbHeight() * 0.2, player.getZ());  //Example for leg
+//                   }
 
                     //TODO remove this later and specify which leg / arm
                     if(hitBodyPart.equals("arm") || hitBodyPart.equals("leg")) hitBodyPart = "left " + hitBodyPart;
@@ -232,6 +283,8 @@ public class RealisticDamage {
                         }
                         String bodyPart = damageType.length > 1 ? getWoundLocation(new ArrayList<>(Arrays.asList(Arrays.copyOfRange(damageType, 1, damageType.length)))) : getWoundLocation(null);
                         pain.addWound(new Wound(damageType[0], severity, bodyPart));
+
+                        event.setCanceled(true);
                     }
                 }
 
@@ -273,51 +326,53 @@ public class RealisticDamage {
                 source.is(DamageTypes.WITHER_SKULL) ||
                 source.is(DamageTypes.EXPLOSION) ||
                 source.is(DamageTypes.PLAYER_EXPLOSION)) {
-            if(source.is(DamageTypes.IN_FIRE) || source.is(DamageTypes.HOT_FLOOR)){
-                Random r = new Random();
-                return new String[]{"burn", "left foot" , "right foot"};
+            if(source.is(DamageTypes.IN_FIRE)){
+                return new String[]{"burn", "left foot" , "right foot", "left leg", "right leg"};
+            }
+            if(source.is(DamageTypes.HOT_FLOOR)){
+                return new String[]{"burn", "left foot", "right foot"};
             }
 
             if (source.is(DamageTypes.LAVA)) {
                 List<String> affectedParts = new ArrayList<>();
-                affectedParts.add("burn");  // Always add burn as first element
+                affectedParts.add("burn");  //Always add burn as first element
 
-                // Get the lava height - start at player's feet and look up for lava blocks
+                //Get the lava height - start at player's feet and look up for lava blocks
                 BlockPos pos = player.blockPosition();
                 Level world = player.level();
                 double lavaHeight = 0;
 
-                // Search up to player height for highest lava block
+                //Search up to player height for highest lava block
                 for (int y = 0; y <= player.getBbHeight(); y++) {
                     BlockPos checkPos = pos.above(y);
                     if (world.getBlockState(checkPos).getBlock() instanceof LiquidBlock) {
-                        lavaHeight = checkPos.getY() + 1; // Add 1 because lava fills the block
+                        lavaHeight = checkPos.getY() + 1; //Add 1 because lava fills the block
                     }
                 }
 
                 double entityY = player.getY();
                 double entityHeight = player.getBbHeight();
 
-                // Feet level (0-10% of height)
+                //Feet level (0-10% of height)
                 if (entityY <= lavaHeight) {
                     affectedParts.add("left foot");
                     affectedParts.add("right foot");
                 }
 
-                // Legs level (10-45% of height)
+                //Legs level (10-45% of height)
                 if (entityY + (entityHeight * 0.45) <= lavaHeight) {
                     affectedParts.add("left leg");
                     affectedParts.add("right leg");
                 }
 
-                // Torso level (45-75% of height)
+                //Torso level (45-75% of height)
                 if (entityY + (entityHeight * 0.75) <= lavaHeight) {
                     affectedParts.add("torso");
                     affectedParts.add("left arm");
                     affectedParts.add("right arm");
                 }
 
-                // Head level (75-100% of height)
+                //Head level (75-100% of height)
                 if (player.getEyeY() <= lavaHeight) {
                     affectedParts.add("head");
                     affectedParts.add("face");
@@ -332,11 +387,15 @@ public class RealisticDamage {
             Player attacker = (Player) directEntity;
             ItemStack weapon = attacker.getMainHandItem();
             if (weapon.getItem() instanceof SwordItem ||
-                    weapon.getItem() instanceof AxeItem) {
+                    weapon.getItem() instanceof AxeItem ||
+                    weapon.getItem() instanceof HoeItem) {
                 return new String[]{"laceration"};
             }
+            else if (weapon.getItem() instanceof PickaxeItem){
+                return new String[]{"puncture"};
+            }
             else{
-                return new String[]{"blunt"}; // TODO If this is tier 3+ make it a laceration, otherwise make it a hematoma
+                return new String[]{"blunt"}; //TODO If this is tier 3+ make it a laceration, otherwise make it a hematoma
             }
         }
 
@@ -345,12 +404,30 @@ public class RealisticDamage {
             for (ItemStack itemStack : directEntity.getHandSlots()){;
                 if (!itemStack.isEmpty()){
                     if(itemStack.getItem() instanceof SwordItem ||
-                    itemStack.getItem() instanceof AxeItem){
+                    itemStack.getItem() instanceof AxeItem ||
+                    itemStack.getItem() instanceof HoeItem){
                         return new String[]{"laceration"};
+                    }
+                    else if (itemStack.getItem() instanceof PickaxeItem){
+                        return new String[]{"puncture"};
+                    }
+                    else{
+                        return new String[]{"blunt"};
                     }
                 }
                 else{
-                    return new String[]{"blunt"}; // TODO If this is tier 3+ make it a laceration, otherwise make it a hematoma
+                    //In the form namespace:entity_name
+                    String mobName = ForgeRegistries.ENTITY_TYPES.getKey(directEntity.getType()).toString();
+                    if(mobWoundTypes.containsKey(mobName)){
+                        String type = mobWoundTypes.get(mobName);
+                        if(Wound.validWoundType(type)){
+                            return new String[]{mobWoundTypes.get(mobName)};
+                        }
+                        else{
+                            return new String[]{"laceration"};
+                        }
+                    }
+                    return new String[]{"blunt"}; //TODO If this is tier 3+ make it a laceration, otherwise make it a hematoma
                 }
             }
         }
@@ -358,7 +435,7 @@ public class RealisticDamage {
         //TODO probably doesn't work and doesn't really need to but it'd be kinda cool
         if (source.is(DamageTypes.THORNS)) {
             if (directEntity != null) {
-                // Get the last damage source we used against them
+                //Get the last damage source we used against them
                 DamageSource lastDamageSource = ((LivingEntity)directEntity).getLastDamageSource();
                 if (lastDamageSource != null) {
                     return classifyDamage(lastDamageSource, lastDamageSource.getDirectEntity(), player);
@@ -423,13 +500,25 @@ public class RealisticDamage {
 
         if (source.is(DamageTypes.SWEET_BERRY_BUSH) ||
                 source.is(DamageTypes.CACTUS)) {
+            if (source.is(DamageTypes.SWEET_BERRY_BUSH)){
+                return new String[]{"abrasion", "left foot", "right foot", "left leg", "right leg"};
+            }
+
+            BlockPos playerPos = player.blockPosition();
+            Level world = player.level();
+
+            //Check if there's a cactus directly below
+            if (world.getBlockState(playerPos.below()).getBlock() instanceof CactusBlock) {
+                return new String[]{"abrasion", "left foot", "right foot"};
+            }
+
             return new String[]{"abrasion"};
         }
 
         if(source.is(DamageTypes.IN_WALL) ||
                 source.is(DamageTypes.CRAMMING) ||
                 source.is(DamageTypes.DROWN)){
-            return new String[]{"suffocation"};
+            return new String[]{"vanilla"};
         }
 
         if(source.is(DamageTypes.STARVE) ||
@@ -441,13 +530,12 @@ public class RealisticDamage {
                 source.is(DamageTypes.OUTSIDE_BORDER) ||
                 source.is(DamageTypes.GENERIC_KILL) ||
                 source.is(DamageTypes.INDIRECT_MAGIC)){
-            return new String[]{"vanilla"}; // Handled the same as without the mod
+            return new String[]{"vanilla"}; //Handled the same as without the mod
         }
 
 
-        return new String[]{"vanilla"}; // Unknown damage type
+        return new String[]{"vanilla"}; //Unknown damage type
     }
-
 
     private static String getWoundLocation(ArrayList<String> include) {
         final String[] BODY_PARTS = {"head", "chest", "left arm", "right arm", "left leg", "right leg", "left foot", "right foot"};
@@ -458,7 +546,7 @@ public class RealisticDamage {
 
         for (int i = 0; i < BODY_PARTS.length; i++) {
             if(include != null && !include.contains(BODY_PARTS[i])) continue;
-            int score = r.nextInt(WEIGHTS[i] + 1); // Value from 0 to the weight
+            int score = r.nextInt(WEIGHTS[i] + 1); //Value from 0 to the weight
             if (score > maxScore) {
                 maxScore = score;
                 selectedPart = BODY_PARTS[i];
@@ -476,7 +564,7 @@ public class RealisticDamage {
         double relativeY = arrowPos.y - playerPos.y;
         double relativeZ = arrowPos.z - playerPos.z;
 
-        // Simple hit detection based on relative position
+        //Simple hit detection based on relative position
         player.sendSystemMessage(Component.literal("Relative X,Y" + relativeX + "," + relativeY + "," + relativeZ));
 
         if (relativeY > player.getBbHeight() * 0.8) {
@@ -503,29 +591,6 @@ public class RealisticDamage {
         return "chest";
     }
 
-    @SubscribeEvent
-    public void onBreakSpeed(PlayerEvent.BreakSpeed event) {
-        //Modify the break speed for both client and server side, may be unnecessary
-        if (event.getEntity() instanceof ServerPlayer) {
-            ServerPlayer player = (ServerPlayer) event.getEntity();
-            player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
-                //Lower speed such that 90 pain = 0 speed
-                double miningSpeedScale = Math.max(Math.min((((maxMiningSpeedScale - minMiningSpeedScale) / (startMiningSpeedScale - endMiningSpeedScale)) * (pain.getChronicPainLevel() - endMiningSpeedScale)) + minMiningSpeedScale, maxMiningSpeedScale), minMiningSpeedScale);
-                if (pain.getAdrenalineLevel() != 0) miningSpeedScale = 1;
-                event.setNewSpeed(event.getOriginalSpeed() * (float) miningSpeedScale);
-            });
-        } else if (event.getEntity() instanceof Player) {
-            Player player = event.getEntity();
-            player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
-                //Lower speed such that 90 pain = 0 speed
-                double miningSpeedScale = Math.max(Math.min((((maxMiningSpeedScale - minMiningSpeedScale) / (startMiningSpeedScale - endMiningSpeedScale)) * (pain.getChronicPainLevel() - endMiningSpeedScale)) + minMiningSpeedScale, maxMiningSpeedScale), minMiningSpeedScale);
-                if (pain.getAdrenalineLevel() != 0) miningSpeedScale = 1;
-                event.setNewSpeed(event.getOriginalSpeed() * (float) miningSpeedScale);
-            });
-        }
-    }
-
-
     //Lower pain level with packets and update player modifiers.
     //Also stop player from sprinting and moving midair
     @SubscribeEvent
@@ -540,6 +605,7 @@ public class RealisticDamage {
 
                                 //TODO replace with tickWounds
                                 if(pain.getWounds().get(i).tick() <= 0) pain.getWounds().remove(i--);
+                                player.setHealth(player.getHealth() - pain.getBleedLevel() / 10000);
                             }
                             //~~ pain.addChronicPain(-.05f); //Chronic pain lowers by 1 per second
                         }
@@ -580,7 +646,7 @@ public class RealisticDamage {
 
         }
 
-        // Stop player from sprinting after 40 pain
+        //Stop player from sprinting after 40 pain
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
                 if (pain.getAdrenalineLevel() == 0) {
@@ -603,6 +669,45 @@ public class RealisticDamage {
         }
     }
 
+    //Create the mob wound config text file if it doesn't already exist, then load it
+    @SubscribeEvent
+    public static void onServerStarting(ServerStartingEvent event) {
+        File configFile = new File(event.getServer().getServerDirectory(), "mod_wounds_config.txt");
+
+        if (!configFile.exists()) {
+            try {
+                //Create a default file if it doesn't exist
+                Files.write(configFile.toPath(), "minecraft:zombie laceration\nminecraft:spider puncture\n".getBytes());
+            } catch (Exception e) {
+                return;
+            }
+        }
+
+        //Read the file into the mobWoundTypes map
+        loadMobConfig(configFile);
+    }
+
+    //Read the mob wound config file
+    private static void loadMobConfig(File configFile) {
+        try (BufferedReader reader = new BufferedReader(new FileReader(configFile))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] parts = line.split(" ");
+                if (parts.length == 2) {
+                    String mob = parts[0];
+                    String woundType = parts[1];
+                    mobWoundTypes.put(mob, woundType);
+                }
+            }
+        } catch (Exception e) {
+            return;
+        }
+    }
+
+
+    //region Apply and manage pain effects
+
+
     //Used to stop the event from being allowed and then canceled since this event fires multiple time per click
     private static boolean allowedLastAction = false;
 
@@ -612,7 +717,7 @@ public class RealisticDamage {
     public void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
         event.getEntity().getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
 
-            // Check if the player is holding a block
+            //Check if the player is holding a block
             if (!(event.getItemStack().getItem() instanceof BlockItem)) {
                 return;
             }
@@ -655,10 +760,10 @@ public class RealisticDamage {
             UUID SPRINT_SPEED_BOOST_ID = UUID.fromString("662a6b8d-da3e-4c1c-8813-96ea6097278d");
 
             if (movementSpeed != null) {
-                // Check if the player has high chronic pain
+                //Check if the player has high chronic pain
                 player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
                     if (pain.getChronicPainLevel() >= 40 && pain.getAdrenalineLevel() == 0) {
-                        // Remove the sprinting speed modifier
+                        //Remove the sprinting speed modifier
                         movementSpeed.removeModifier(SPRINT_SPEED_BOOST_ID);
                     }
                 });
@@ -749,47 +854,24 @@ public class RealisticDamage {
         }
     }
 
-    //Attach the pain capability and add the movement modifier
     @SubscribeEvent
-    public static void onAttachCapabilitiesPlayer(AttachCapabilitiesEvent<Entity> attachEvent) {
-        if (attachEvent.getObject() instanceof Player) {
-            if (!attachEvent.getObject().getCapability(PainCapabilityProvider.PAIN_CAPABILITY).isPresent()) {
-                attachEvent.addCapability(new ResourceLocation(MODID, "pain"), new PainCapabilityProvider());
-            }
-        }
-    }
-
-    //Register the pain capability
-    @Mod.EventBusSubscriber(modid = RealisticDamage.MODID, bus = Mod.EventBusSubscriber.Bus.MOD)
-    public static class ModEventBusEvents {
-        @SubscribeEvent
-        public static void registerCapabilities(RegisterCapabilitiesEvent event) {
-            event.register(IPainCapability.class);
-            LOGGER.debug("Registering pain capabilities");
-        }
-    }
-
-    //Add the player attributes when the player joins the world
-    @SubscribeEvent
-    public static void onEntityJoinWorld(EntityJoinLevelEvent event) {
-        if (event.getEntity() instanceof Player player) {
+    public void onBreakSpeed(PlayerEvent.BreakSpeed event) {
+        //Modify the break speed for both client and server side, may be unnecessary
+        if (event.getEntity() instanceof ServerPlayer) {
+            ServerPlayer player = (ServerPlayer) event.getEntity();
             player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
-                AttributeInstance movementSpeed = player.getAttribute(Attributes.MOVEMENT_SPEED);
-
-                if (movementSpeed != null) {
-
-                    if (movementSpeed.getModifier(PAIN_MOVEMENT_SPEED_MODIFIER_ID) == null) {
-                        AttributeModifier speedModifier = new AttributeModifier(
-                                PAIN_MOVEMENT_SPEED_MODIFIER_ID,
-                                "Chronic Pain Speed Reduction",
-                                0, // Start with no effect
-                                AttributeModifier.Operation.MULTIPLY_TOTAL
-                        );
-                        movementSpeed.addPermanentModifier(speedModifier);
-                    }
-                }
-
-                updateModifiers(player, pain);
+                //Lower speed such that 90 pain = 0 speed
+                double miningSpeedScale = Math.max(Math.min((((maxMiningSpeedScale - minMiningSpeedScale) / (startMiningSpeedScale - endMiningSpeedScale)) * (pain.getChronicPainLevel() - endMiningSpeedScale)) + minMiningSpeedScale, maxMiningSpeedScale), minMiningSpeedScale);
+                if (pain.getAdrenalineLevel() != 0) miningSpeedScale = 1;
+                event.setNewSpeed(event.getOriginalSpeed() * (float) miningSpeedScale);
+            });
+        } else if (event.getEntity() instanceof Player) {
+            Player player = event.getEntity();
+            player.getCapability(PainCapabilityProvider.PAIN_CAPABILITY).ifPresent(pain -> {
+                //Lower speed such that 90 pain = 0 speed
+                double miningSpeedScale = Math.max(Math.min((((maxMiningSpeedScale - minMiningSpeedScale) / (startMiningSpeedScale - endMiningSpeedScale)) * (pain.getChronicPainLevel() - endMiningSpeedScale)) + minMiningSpeedScale, maxMiningSpeedScale), minMiningSpeedScale);
+                if (pain.getAdrenalineLevel() != 0) miningSpeedScale = 1;
+                event.setNewSpeed(event.getOriginalSpeed() * (float) miningSpeedScale);
             });
         }
     }
@@ -805,8 +887,8 @@ public class RealisticDamage {
                 //Lower speed such that 90 pain = 0 speed
                 double movementSpeedScale = Math.max(Math.min((((maxMovementSpeedScale - minMovementSpeedScale) / (startMovementSpeedScale - endMovementSpeedScale)) * (pain.getChronicPainLevel() - endMovementSpeedScale)) + minMovementSpeedScale, maxMovementSpeedScale), minMovementSpeedScale);
                 movementSpeedScale -= 1; //Reduce it by 1 as Minecraft takes our values and adds 1 to it
-                // If the value has changed, remove the old modifier and add a new one with the updated value
-                if (pain.getAdrenalineLevel() != 0) movementSpeedScale = 0.6; // 1.6 times
+                //If the value has changed, remove the old modifier and add a new one with the updated value
+                if (pain.getAdrenalineLevel() != 0) movementSpeedScale = 0.6; //1.6 times
                 if (existingModifier.getAmount() != movementSpeedScale) {
                     movementSpeed.removeModifier(PAIN_MOVEMENT_SPEED_MODIFIER_ID);
                     AttributeModifier updatedModifier = new AttributeModifier(
@@ -831,7 +913,7 @@ public class RealisticDamage {
                 double attackSpeedScale = Math.max(Math.min((((maxAttackSpeedScale - minAttackSpeedScale) / (startAttackSpeedScale - endAttackSpeedScale)) * (pain.getChronicPainLevel() - endAttackSpeedScale)) + minAttackSpeedScale, maxAttackSpeedScale), minAttackSpeedScale);
                 attackSpeedScale -= 1; //Reduce it by 1 as Minecraft takes our values and adds 1 to it
                 if (pain.getAdrenalineLevel() != 0) attackSpeedScale = 7; //8 times
-                // If the value has changed, remove the old modifier and add a new one with the updated value
+                //If the value has changed, remove the old modifier and add a new one with the updated value
                 if (existingModifier.getAmount() != attackSpeedScale) {
                     attackSpeed.removeModifier(PAIN_ATTACK_SPEED_MODIFIER_ID);
                     AttributeModifier updatedModifier = new AttributeModifier(
@@ -856,4 +938,7 @@ public class RealisticDamage {
             player.addEffect(new MobEffectInstance(MobEffects.CONFUSION, 20 * 5, 0, false, false, false));
         }
     }
+    //endregion
+
+
 }

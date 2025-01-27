@@ -16,6 +16,7 @@ public class Wound {
     private String bodyPart;
     private int ticksRemaining;
     private int pain;
+    private float bleed;
     private final int SEVERITY_ZERO_TICKS = 800; // ~40 seconds
     private final int SEVERITY_ONE_TICKS = 12000; // ~10 minutes
     private final int SEVERITY_TWO_TICKS = 36000; // ~30 minutes
@@ -79,23 +80,30 @@ public class Wound {
             case "laceration":
                 isFatal = isFatalRoll <= 10 && this.severity == 3;
                 pain = this.severity == 0 ? 10 : (this.severity == 1 ? 25 : (this.severity == 2 ? 40 : 80));
+                bleed = this.severity == 0 ? .000033f : (this.severity == 1 ? .000056f : (this.severity == 2 ? .000083f : .000167f));
+                //                           5 mins to death                3 mins                          2 mins 1 mins
                 break;
             case "abrasion":
                 isFatal = isFatalRoll <= 10 && this.severity == 3;
                 pain = this.severity == 0 ? 10 : (this.severity == 1 ? 25 : (this.severity == 2 ? 40 : 80));
+                bleed = this.severity == 0 ? .000033f : (this.severity == 1 ? .000056f : (this.severity == 2 ? .000083f : .000167f));
                 break;
             case "puncture":
                 isFatal = isFatalRoll <= 10 && this.severity == 3;
                 pain = this.severity == 0 ? 10 : (this.severity == 1 ? 25 : (this.severity == 2 ? 40 : 80));
+                bleed = this.severity == 0 ? .000033f : (this.severity == 1 ? .000056f : (this.severity == 2 ? .000083f : .000167f));
                 break;
             case "hematoma":
                 pain = this.severity == 0 ? 10 : (this.severity == 1 ? 25 : (this.severity == 2 ? 40 : 80));
+                bleed = 0;
                 break;
             case "fracture":
                 pain = this.severity == 0 ? 10 : (this.severity == 1 ? 25 : (this.severity == 2 ? 40 : 80));
+                bleed = 0;
                 break;
             case "burn":
                 pain = this.severity == 0 ? 10 : (this.severity == 1 ? 25 : (this.severity == 2 ? 40 : 80));
+                bleed = 0;
                 break;
         }
 
@@ -115,6 +123,7 @@ public class Wound {
         tag.putString("bodyPart", bodyPart);
         tag.putInt("ticksRemaining", ticksRemaining);
         tag.putInt("pain", pain);
+        tag.putFloat("bleed", bleed);
         tag.putInt("posX", posX);
         tag.putInt("posY", posY);
         return tag;
@@ -131,6 +140,7 @@ public class Wound {
         this.bodyPart = tag.getString("bodyPart");
         this.ticksRemaining = tag.getInt("ticksRemaining");
         this.pain = tag.getInt("pain");
+        this.bleed = tag.getFloat("bleed");
         this.posX = tag.getInt("posX");
         this.posY = tag.getInt("posY");
     }
@@ -222,14 +232,31 @@ public class Wound {
      * @return the pain of this wound accounting for how much it healed
      */
     public float getPain(){
-        float ticksPercentage = 1 - ((float)ticksRemaining / (this.severity == 1 ? SEVERITY_ONE_TICKS : (this.severity == 2 ? SEVERITY_TWO_TICKS : SEVERITY_THREE_TICKS)));
+        float ticksPercentage = 1 - ((float)ticksRemaining / (this.severity == 0 ? SEVERITY_ZERO_TICKS : (this.severity == 1 ? SEVERITY_ONE_TICKS : (this.severity == 2 ? SEVERITY_TWO_TICKS : SEVERITY_THREE_TICKS))));
         return (float)pain * (float)Math.sqrt(-ticksPercentage + 1);
+    }
+
+    public float getBleed(){
+        return bleed;
     }
 
     public boolean isFatal() {
         return isFatal;
     }
 
+    public static boolean validWoundType(String woundType){
+        if(woundType.equalsIgnoreCase("laceration") ||
+                woundType.equals("abrasion") ||
+                woundType.equals("puncture") ||
+                woundType.equals("hematoma") ||
+                woundType.equals("fracture") ||
+                woundType.equals("burn") ||
+                woundType.equals("blunt")){
+            return true;
+        }
+        return false;
+    }
 
 
 }
+

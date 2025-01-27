@@ -7,6 +7,7 @@ import java.util.ArrayList;
 
 class PainCapability implements IPainCapability {
     private float chronicPainLevel = 0;
+    private float bleedLevel = 0;
     private float adrenalineLevel = 0;
     private ArrayList<Wound> wounds = new ArrayList<>();
     private ArrayList<double[]> lodgedArrowPositions = new ArrayList<>();
@@ -26,6 +27,20 @@ class PainCapability implements IPainCapability {
         calculateChronicPainLevel();
         return this.chronicPainLevel;
     }
+
+    @Override
+    public float getBleedLevel() {
+        float maxBleed = 0;
+
+        for(int i = 0; i < wounds.size(); i++){
+            if(wounds.get(i).getBleed() > maxBleed){
+                maxBleed = wounds.get(i).getPain();
+            }
+        }
+        return maxBleed;
+    }
+
+
 
     @Override
     public void calculateChronicPainLevel() {
@@ -82,6 +97,7 @@ class PainCapability implements IPainCapability {
         CompoundTag tag = new CompoundTag();
         tag.putFloat("chronicPainLevel", getChronicPainLevel());
         tag.putFloat("adrenalineLevel", this.adrenalineLevel);
+        tag.putFloat("bleedLevel", this.bleedLevel);
 
         ListTag woundsTag = new ListTag();
         for (Wound wound : wounds) {
@@ -96,6 +112,7 @@ class PainCapability implements IPainCapability {
     public void deserializeNBT(CompoundTag nbt) {
         this.chronicPainLevel = nbt.getFloat("chronicPainLevel");
         this.adrenalineLevel = nbt.getFloat("adrenalineLevel");
+        this.bleedLevel = nbt.getFloat("bleedLevel");
 
         this.wounds.clear();
         ListTag woundsTag = nbt.getList("wounds", 10); // 10 for CompoundTag

@@ -11,6 +11,7 @@ public interface IPainCapability extends INBTSerializable<CompoundTag> {
     void addWound(Wound w);
     void tickWounds();
     float getChronicPainLevel();
+    float getBleedLevel();
     void calculateChronicPainLevel();
     float getAdrenalineLevel();
     ArrayList<Wound> getWounds();
