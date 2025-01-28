@@ -230,7 +230,6 @@ public class RealisticDamage {
                 Entity directEntity = damageSource.getDirectEntity();
                 String[] damageType = classifyDamage(damageSource, directEntity, player);
                 //TODO figure out dammage types
-                //player.sendSystemMessage(Component.literal("SOURCE: " + damageSource + " " + damageSource.));
 
                 if (directEntity instanceof Arrow) {
                     Arrow arrow = (Arrow) directEntity;
@@ -255,7 +254,6 @@ public class RealisticDamage {
                     //TODO make it so the player doesnt receive any damage for the hit, besides the amount of bleed of the wound
                     pain.addWound(new Wound("Puncture", 2, hitBodyPart));
 
-                    player.sendSystemMessage(Component.literal("Player hit in the " + hitBodyPart + " " + event.getAmount()));
                 }
                 else{
                     if(!damageType[0].equals("vanilla")) {
@@ -272,7 +270,6 @@ public class RealisticDamage {
                     }
                 }
 
-                player.sendSystemMessage(Component.literal("" + pain.getChronicPainLevel()));
                 if (System.currentTimeMillis() - lastAdrenalineRushTime > adrenalineRushCooldown && pain.getAdrenalineLevel() == 0) {
                     if (pain.getChronicPainLevel() >= 30) {
                         pain.setAdrenalineLevel(50 + ((pain.getChronicPainLevel() - 30) / 70) * 50);
@@ -546,7 +543,6 @@ public class RealisticDamage {
         double relativeZ = arrowPos.z - playerPos.z;
 
         //Simple hit detection based on relative position
-        player.sendSystemMessage(Component.literal("Relative X,Y" + relativeX + "," + relativeY + "," + relativeZ));
 
         if (relativeY > player.getBbHeight() * 0.8) {
             return "head";
@@ -868,7 +864,7 @@ public class RealisticDamage {
                 //Lower attack speed such that 90 pain = 0 speed
                 double attackSpeedScale = Math.max(Math.min((((maxAttackSpeedScale - minAttackSpeedScale) / (startAttackSpeedScale - endAttackSpeedScale)) * (pain.getChronicPainLevel() - endAttackSpeedScale)) + minAttackSpeedScale, maxAttackSpeedScale), minAttackSpeedScale);
                 attackSpeedScale -= 1; //Reduce it by 1 as Minecraft takes our values and adds 1 to it
-                if (pain.getAdrenalineLevel() != 0) attackSpeedScale = 7; //8 times
+                if (pain.getAdrenalineLevel() != 0) attackSpeedScale = 999; //1000 times
                 //If the value has changed, remove the old modifier and add a new one with the updated value
                 if (existingModifier.getAmount() != attackSpeedScale) {
                     attackSpeed.removeModifier(PAIN_ATTACK_SPEED_MODIFIER_ID);
