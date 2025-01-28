@@ -636,7 +636,7 @@ public class RealisticDamage {
     //Create the mob wound config text file if it doesn't already exist, then load it
     @SubscribeEvent
     public static void onServerStarting(ServerStartingEvent event) {
-        File configFile = new File(event.getServer().getServerDirectory(), "mod_wounds_config.txt");
+        File configFile = new File(event.getServer().getServerDirectory(), "mob_wounds_config.txt");
 
         if (!configFile.exists()) {
             try {
