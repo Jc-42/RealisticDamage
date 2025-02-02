@@ -6,6 +6,7 @@ import com.github.Jc42.realisticdamage.network.PacketHandler;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
@@ -790,15 +791,27 @@ public class RealisticDamage {
 
         @SubscribeEvent
         public static void onScreenInit(ScreenEvent.Init.Post event) {
-            if (event.getScreen() instanceof InventoryScreen && !(event.getScreen() instanceof WoundsScreen)) {
-                InventoryScreen screen = (InventoryScreen) event.getScreen();
-                int x = screen.getGuiLeft();
-                int y = screen.getGuiTop();
+            Screen screen = event.getScreen();
+
+            if (screen instanceof InventoryScreen inventoryScreen) {
+                int x = inventoryScreen.getGuiLeft() + 4;
+                int y = inventoryScreen.getGuiTop() - 19;
+
+                //Make this happen! we need to change the event or somthing
+                if (inventoryScreen.getRecipeBookComponent().isActive()) {
+                    x += 58;
+                }
+
+                for (var widget : event.getScreen().children()) {
+                    if (widget instanceof Button button && button.getX() + button.getWidth() > x && button.getX() < x + 20 && button.getY() + button.getHeight() > y && button.getY() < y + 20) {
+                        x += 22;
+                    }
+                }
 
                 event.addListener(Button.builder(
                                 Component.literal("W"),
-                                button -> screen.getMinecraft().setScreen(new WoundsScreen(screen.getMinecraft().player)))
-                        .pos(x + 176, y)
+                                btn -> inventoryScreen.getMinecraft().setScreen(new WoundsScreen(inventoryScreen.getMinecraft().player)))
+                        .pos(x, y)
                         .size(20, 20)
                         .build()
                 );

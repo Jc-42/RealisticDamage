@@ -2,7 +2,9 @@ package com.github.Jc42.realisticdamage;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
@@ -17,6 +19,23 @@ public class WoundsScreen extends Screen {
         super(Component.literal("Wounds"));
         this.player = player;
     }
+
+    @Override
+    protected void init() {
+        super.init();
+
+        int x = (this.width - this.imageWidth) / 2 + 4;
+        int y = (this.height - this.imageHeight) / 2 - 19;
+
+        this.addRenderableWidget(Button.builder(
+                        Component.literal("<-"),
+                        btn -> this.getMinecraft().setScreen(new InventoryScreen(this.getMinecraft().player)))
+                .pos(x, y)
+                .size(20, 20)
+                .build()
+        );
+    }
+
 
     @Override
     public void render(GuiGraphics gui, int mouseX, int mouseY, float partialTick) {
@@ -80,5 +99,13 @@ public class WoundsScreen extends Screen {
     @Override
     public boolean isPauseScreen() {
         return false;
+    }
+
+    public int getGuiLeft() {
+        return 0;
+    }
+
+    public int getGuiTop() {
+        return 0;
     }
 }
