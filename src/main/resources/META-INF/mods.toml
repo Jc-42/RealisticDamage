@@ -1,0 +1,37 @@
+# See https://docs.minecraftforge.net/en/1.21.x/gettingstarted/modfiles/#modstoml
+# There are lots of things you can do with the mods.toml, and not all fields are included with this MDK
+# References: https://github.com/MinecraftForge/MDKExamples
+
+modLoader="javafml"
+loaderVersion="[64,)"
+license="CC BY-NC-SA 4.0"
+#issueTrackerURL="https://github.com/MyOrganization/MyMod/" #optional
+#clientSideOnly=true #optional, default=false
+
+[[mods]]
+modId="realisticdamage"
+version="0.2.0-indev"
+displayName="Realistic Damage"
+#updateJSONURL="https://example.com/updates.json" #optional
+#displayURL="https://example.com/" #optional
+#logoFile="examplemod.png" #optional
+#credits="" #optional
+authors="Julian Carpenter" #optional
+#displayTest="MATCH_VERSION" #optional, default=MATCH_VERSION when not clientSideOnly, else IGNORE_ALL_VERSION
+
+description='''Example mod description.
+Newline characters can be used like this, and rendered on the mods screen properly.'''
+
+[[dependencies.realisticdamage]] #recommended
+    modId="forge"
+    mandatory=true
+    versionRange="[64,)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.realisticdamage]] #recommended
+    modId="minecraft"
+    mandatory=true
+    versionRange="[26.1.2,26.2,)"
+    ordering="NONE"
+    side="BOTH"

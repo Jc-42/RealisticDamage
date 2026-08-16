@@ -1,0 +1,27 @@
+26.1.2 Changelog
+64.1
+====
+ - 64.1.0 26.1.2 RB 1
+
+64.0
+====
+ - 64.0.16 Fix ModList screen selection getting out of sync. Closes #10855
+ - 64.0.15 Bump Dependencies, Notably ASM for Java 27 support
+ - 64.0.14 Add DeltaTracker (partialTick) context to PassDefinitions (#10848)
+ - 64.0.13 Update equality check for RegistryObject to include RegistryObject#key. (#10859)
+ - 64.0.12 Handle glfw window pos errors gracefully for wayland (#10852)
+ - 64.0.11 ForgeDev 7 (#10821)
+           Co-authored-by: LexManos <LexManos@gmail.com>
+           Co-authored-by: Jonathing <me@jonathing.me>
+ - 64.0.10 Toml parsing errors are now visible in the latest log. (#10825)
+ - 64.0.9  [26.1.2] Split hotbar rendering into components, allow replacing renders (#10824)
+ - 64.0.8  Fix misaligned ClientLevel load patch
+ - 64.0.7  Fix IForgeBlockStateModel#getModelData is never called Fixes #10817
+ - 64.0.6  Fix base bucket model not being flipped for gasses. Closes #10814
+ - 64.0.5  Fix being considered in water when not. Closes #10813
+ - 64.0.4  Add `c:bars/copper` and `c:bars/iron` tags (#10810)
+ - 64.0.3  Add `c:foods/dough` tag (#10811)
+ - 64.0.2  Add `c:drink_containing/bottle` and `c:drink_containing/bucket` (#10812)
+ - 64.0.1  Copy fluid and lava still textures to Item atlas for DynamicFluidContainerModel. Fixes #10809
+ - 64.0.0  26.1.2
+
