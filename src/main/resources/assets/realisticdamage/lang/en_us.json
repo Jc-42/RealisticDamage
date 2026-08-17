@@ -1,0 +1,13 @@
+{
+  "itemGroup.realisticdamage": "Example Mod Tab",
+  "block.realisticdamage.example_block": "Example Block",
+  "item.realisticdamage.example_item": "Example Item",
+
+  "realisticdamage.configuration.title": "Realistic Damage Configs",
+  "realisticdamage.configuration.section.realisticdamage.common.toml": "Realistic Damage Configs",
+  "realisticdamage.configuration.section.realisticdamage.common.toml.title": "Realistic Damage Configs",
+  "realisticdamage.configuration.items": "Item List",
+  "realisticdamage.configuration.logDirtBlock": "Log Dirt Block",
+  "realisticdamage.configuration.magicNumberIntroduction": "Magic Number Text",
+  "realisticdamage.configuration.magicNumber": "Magic Number"
+}
