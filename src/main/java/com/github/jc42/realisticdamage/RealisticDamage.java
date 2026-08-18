@@ -9,7 +9,9 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.tags.ItemTags;
+import net.minecraft.util.Mth;
 import net.minecraft.util.TriState;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.damagesource.DamageTypes;
@@ -33,10 +35,13 @@ import net.minecraft.world.item.*;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.CactusBlock;
 import net.minecraft.world.level.block.LiquidBlock;
+import net.minecraft.world.level.material.FluidState;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.neoforge.attachment.AttachmentType;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
+import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
 import net.neoforged.neoforge.event.entity.living.LivingEvent;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
@@ -259,7 +264,7 @@ public class RealisticDamage {
 
     //Update pain level and send pain packet
     @SubscribeEvent(priority = EventPriority.HIGHEST)
-    public static void onLivingHurt(LivingIncomingDamageEvent event) {
+    public static void onPlayerDamagePre(LivingDamageEvent.Pre event) {
         //TODO when wearing armor on the hit body part the amount of health the armor prevents scales a percentage chance to turn any wound type into a blunt
         //TODO when considering the amount of health lost for calcs, only look at armor reduction for the body part hit. So if hit on chest look at the damage they would recieve if wearing only chestplate (if chestplate is on)
         //TODO make bleed go head > chest > legs > arms > feet
@@ -267,10 +272,10 @@ public class RealisticDamage {
 
             PainCapability pain = player.getData(RealisticDamage.PAIN);
 
-            DamageSource damageSource = event.getSource();
+            DamageSource damageSource = event.getContainer().getSource();
             Entity directEntity = damageSource.getDirectEntity();
             String[] damageType = classifyDamage(damageSource, directEntity, player);
-            float fractionLost = event.getAmount() / player.getMaxHealth();
+            float fractionLost = event.getOriginalDamage() / player.getMaxHealth();
             int severity = fractionLost >= .40 ? 3 : (fractionLost >= .20 ? 2 : (fractionLost >= .10 ? 1 : 0));
 
             if (directEntity instanceof Arrow arrow) {
@@ -293,8 +298,6 @@ public class RealisticDamage {
 
                 //TODO make it so that the severity is based on the amount of damage
                 pain.addWound(new Wound("Puncture", severity, hitBodyPart));
-                //Cancel vanilla damage
-                event.setCanceled(true);
 
             } else {
                 if (!damageType[0].equals("vanilla")) {
@@ -304,8 +307,6 @@ public class RealisticDamage {
                     }
                     String bodyPart = damageType.length > 1 ? getWoundLocation(new ArrayList<>(Arrays.asList(Arrays.copyOfRange(damageType, 1, damageType.length)))) : getWoundLocation(null);
                     pain.addWound(new Wound(damageType[0], severity, bodyPart));
-
-                    event.setCanceled(true);
                 }
             }
 
@@ -322,6 +323,9 @@ public class RealisticDamage {
             if (player instanceof ServerPlayer serverPlayer) {
                 PacketDistributor.sendToPlayer(serverPlayer, new PainLevelPacket(pain.getAdrenalineLevel(), pain.getWounds()));
             }
+
+            //Cancel damage
+            event.setNewDamage(0f);y
         }
     }
 
@@ -331,8 +335,8 @@ public class RealisticDamage {
         //TODO magic damage, wither damage
         //TODO make lava more than just a burn
         if (source.is(DamageTypes.IN_FIRE) ||
-                source.is(DamageTypes.ON_FIRE) ||
                 source.is(DamageTypes.LAVA) ||
+                source.is(DamageTypes.ON_FIRE) ||
                 source.is(DamageTypes.HOT_FLOOR) ||
                 source.is(DamageTypes.LIGHTNING_BOLT) ||
                 source.is(DamageTypes.DRAGON_BREATH) ||
@@ -353,48 +357,45 @@ public class RealisticDamage {
             if (source.is(DamageTypes.LAVA)) {
                 List<String> affectedParts = new ArrayList<>();
                 affectedParts.add("burn");  //Always add burn as first element
-
                 //Get the lava height - start at player's feet and look up for lava blocks
-                BlockPos pos = player.blockPosition();
                 Level world = player.level();
-                double lavaHeight = 0;
-
-                //Search up to player height for highest lava block
-                for (int y = 0; y <= player.getBbHeight(); y++) {
-                    BlockPos checkPos = pos.above(y);
-                    if (world.getBlockState(checkPos).getBlock() instanceof LiquidBlock) {
-                        lavaHeight = checkPos.getY() + 1; //Add 1 because lava fills the block
-                    }
-                }
-
+                AABB box = player.getBoundingBox();
                 double entityY = player.getY();
                 double entityHeight = player.getBbHeight();
-
-                //Feet level (0-10% of height)
-                if (entityY <= lavaHeight) {
+                double lavaHeight = Double.NEGATIVE_INFINITY;
+                BlockPos.MutableBlockPos checkPos = new BlockPos.MutableBlockPos();
+                //Search up to player height for highest lava block
+                for (int x = Mth.floor(box.minX); x <= Mth.floor(box.maxX); x++) {
+                    for (int z = Mth.floor(box.minZ); z <= Mth.floor(box.maxZ); z++) {
+                        for (int y = Mth.floor(box.minY); y <= Mth.floor(box.maxY); y++) {
+                            checkPos.set(x, y, z);
+                            FluidState fluidState = world.getFluidState(checkPos);
+                            if (!fluidState.is(FluidTags.LAVA)) break;
+                            lavaHeight = Math.max(lavaHeight, y + fluidState.getHeight(world, checkPos));
+                        }
+                    }
+                }
+                double lavaDepth = (lavaHeight - entityY) / entityHeight;
+                //Feet level (0-9.4% of height)
+                if (lavaDepth >= 0.023) {
                     affectedParts.add("left foot");
                     affectedParts.add("right foot");
                 }
-
-                //Legs level (10-45% of height)
-                if (entityY + (entityHeight * 0.45) <= lavaHeight) {
+                //Legs level (9.4-37.5% of height)
+                if (lavaDepth >= 0.164) {
                     affectedParts.add("left leg");
                     affectedParts.add("right leg");
                 }
-
-                //Torso level (45-75% of height)
-                if (entityY + (entityHeight * 0.75) <= lavaHeight) {
-                    affectedParts.add("torso");
+                //Torso level (37.5-75% of height)
+                if (lavaDepth >= 0.469) {
+                    affectedParts.add("chest");
                     affectedParts.add("left arm");
                     affectedParts.add("right arm");
                 }
-
                 //Head level (75-100% of height)
-                if (player.getEyeY() <= lavaHeight) {
+                if (lavaDepth >= 0.813) {
                     affectedParts.add("head");
-                    affectedParts.add("face");
                 }
-
                 return affectedParts.toArray(new String[0]);
             }
             return new String[]{"burn"};
