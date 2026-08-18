@@ -1,23 +1,24 @@
 package com.github.jc42.realisticdamage;
 
-import com.github.jc42.realisticdamage.network.PacketHandler;
 import com.github.jc42.realisticdamage.network.PainLevelPacket;
 import com.github.jc42.realisticdamage.network.StopKeyPacket;
 import net.minecraft.core.BlockPos;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.util.Mth;
 import net.minecraft.util.TriState;
+import net.minecraft.world.damagesource.CombatRules;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
@@ -25,6 +26,7 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.LlamaSpit;
 import net.minecraft.world.entity.projectile.ShulkerBullet;
+import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
 import net.minecraft.world.entity.projectile.arrow.Arrow;
 import net.minecraft.world.entity.projectile.arrow.ThrownTrident;
 import net.minecraft.world.entity.projectile.hurtingprojectile.DragonFireball;
@@ -32,25 +34,26 @@ import net.minecraft.world.entity.projectile.hurtingprojectile.LargeFireball;
 import net.minecraft.world.entity.projectile.hurtingprojectile.SmallFireball;
 import net.minecraft.world.entity.projectile.hurtingprojectile.WitherSkull;
 import net.minecraft.world.item.*;
+import net.minecraft.world.item.enchantment.EnchantmentHelper;
+import net.minecraft.world.item.equipment.ArmorType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.CactusBlock;
-import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.neoforge.attachment.AttachmentType;
+import net.neoforged.neoforge.common.damagesource.DamageContainer;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
 import net.neoforged.neoforge.event.entity.living.LivingEvent;
-import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.registries.*;
-import org.apache.logging.log4j.core.net.Priority;
+import org.apache.commons.lang3.mutable.MutableFloat;
 import org.slf4j.Logger;
 
 import com.mojang.logging.LogUtils;
@@ -61,9 +64,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.food.FoodProperties;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
-import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.Mod;
@@ -262,6 +263,50 @@ public class RealisticDamage {
 
     //endregion
 
+    private static float calculateDamageReduction(Player player, LivingDamageEvent.Pre event, EquipmentSlot slot) {
+        ItemStack armor = player.getItemBySlot(slot);
+        float newDamage = event.getOriginalDamage();
+        DamageContainer container = event.getContainer();
+
+        if(!armor.isEmpty()) {
+            DamageSource source = container.getSource();
+
+            newDamage = container.getNewDamage()
+                    + container.getReduction(DamageContainer.Reduction.ARMOR)
+                    + container.getReduction(DamageContainer.Reduction.MOB_EFFECTS)
+                    + container.getReduction(DamageContainer.Reduction.ENCHANTMENTS);
+
+            if (!source.is(DamageTypeTags.BYPASSES_ARMOR)) {
+                AttributeInstance armorInst = new AttributeInstance(Attributes.ARMOR, i -> {});
+                AttributeInstance toughInst = new AttributeInstance(Attributes.ARMOR_TOUGHNESS, i -> {});
+                Map<Identifier, AttributeModifier> armorMods = new LinkedHashMap<>();
+                Map<Identifier, AttributeModifier> toughMods = new LinkedHashMap<>();
+                armor.forEachModifier(slot, (attr, mod) -> {
+                    if (attr.equals(Attributes.ARMOR)) armorMods.put(mod.id(), mod);
+                    else if (attr.equals(Attributes.ARMOR_TOUGHNESS)) toughMods.put(mod.id(), mod);
+                });
+                armorMods.values().forEach(armorInst::addTransientModifier);
+                toughMods.values().forEach(toughInst::addTransientModifier);
+
+                newDamage = CombatRules.getDamageAfterAbsorb(player, newDamage, source,
+                        Mth.floor(armorInst.getValue()), (float) toughInst.getValue());
+            }
+
+            if (newDamage > 0.0F
+                    && !source.is(DamageTypeTags.BYPASSES_EFFECTS)
+                    && !source.is(DamageTypeTags.BYPASSES_ENCHANTMENTS)
+                    && player.level() instanceof ServerLevel serverLevel) {
+                MutableFloat protection = new MutableFloat(0.0F);
+                EnchantmentHelper.runIterationOnItem(armor, slot, player, (ench, lvl, item) ->
+                        ench.value().modifyDamageProtection(serverLevel, lvl, item.itemStack(), player, source, protection));
+                if (protection.floatValue() > 0.0F) {
+                    newDamage = CombatRules.getDamageAfterMagicAbsorb(newDamage, protection.floatValue());
+                }
+            }
+        }
+        return newDamage;
+    }
+
     //Update pain level and send pain packet
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onPlayerDamagePre(LivingDamageEvent.Pre event) {
@@ -276,7 +321,20 @@ public class RealisticDamage {
             DamageSource damageSource = event.getContainer().getSource();
             Entity directEntity = damageSource.getDirectEntity();
             String[] damageType = classifyDamage(damageSource, directEntity, player);
-            float fractionLost = event.getOriginalDamage() / player.getMaxHealth();
+            String bodyPart = getWoundLocation(damageType, directEntity, player);
+
+
+            float newDamage = switch (bodyPart) {
+                case "head" -> calculateDamageReduction(player, event, EquipmentSlot.HEAD);
+                case "chest", "left arm", "right arm" -> calculateDamageReduction(player, event, EquipmentSlot.CHEST);
+                case "left leg", "right leg" -> calculateDamageReduction(player, event, EquipmentSlot.LEGS);
+                case "left foot", "right foot" -> calculateDamageReduction(player, event, EquipmentSlot.FEET);
+                default -> event.getContainer().getNewDamage();
+            };
+
+            player.sendSystemMessage(Component.literal("Original Damage: " + event.getOriginalDamage() + " New Damage: " + event.getNewDamage() + " Container New: " + event.getContainer().getNewDamage() + " Custom New: " + newDamage));
+
+            float fractionLost = newDamage / player.getMaxHealth();
             int severity = fractionLost >= .40 ? 3 : (fractionLost >= .20 ? 2 : (fractionLost >= .10 ? 1 : 0));
 
             if (directEntity instanceof Arrow arrow) {
@@ -285,7 +343,6 @@ public class RealisticDamage {
 
 
                 //endregion
-                String hitBodyPart = detectHitBodyPart(player, arrow);
 
                 double[] position = {arrow.position().x, arrow.position().y, arrow.position().z, arrow.getXRot(), arrow.getYRot()};
 
@@ -294,11 +351,8 @@ public class RealisticDamage {
                 //TODO head code sets it to right arm?
                 //TODO it never triggers the left arm or the left leg
 
-                //TODO remove this later and specify which leg / arm
-                if (hitBodyPart.equals("arm") || hitBodyPart.equals("leg")) hitBodyPart = "left " + hitBodyPart;
-
                 //TODO make it so that the severity is based on the amount of damage
-                pain.addWound(new Wound("Puncture", severity, hitBodyPart));
+                pain.addWound(new Wound("Puncture", severity, bodyPart));
 
             } else {
                 if (!damageType[0].equals("vanilla")) {
@@ -306,7 +360,6 @@ public class RealisticDamage {
                         if (severity == 3) damageType[0] = "laceration";
                         else damageType[0] = "hematoma";
                     }
-                    String bodyPart = damageType.length > 1 ? getWoundLocation(new ArrayList<>(Arrays.asList(Arrays.copyOfRange(damageType, 1, damageType.length)))) : getWoundLocation(null);
                     pain.addWound(new Wound(damageType[0], severity, bodyPart));
                 }
             }
@@ -330,7 +383,7 @@ public class RealisticDamage {
         }
     }
 
-        private static String[] classifyDamage(DamageSource source, Entity directEntity, Player player) {
+    private static String[] classifyDamage(DamageSource source, Entity directEntity, Player player) {
         //TODO make blunt have chance to add a fracture too
         //TODO make lava more than just a burn
         if (source.is(DamageTypes.IN_FIRE) ||
@@ -375,7 +428,7 @@ public class RealisticDamage {
                 parts.add("burn");
                 if (low < 0.08f) { parts.add("left foot"); parts.add("right foot"); }
                 if (high > 0.05f && low < 0.30f) { parts.add("left leg"); parts.add("right leg"); }
-                if (high > 0.30f && low < 0.75f) { parts.add("torso"); }
+                if (high > 0.30f && low < 0.75f) { parts.add("chest"); }
                 if (high > 0.35f && low < 0.70f) { parts.add("left arm"); parts.add("right arm"); }
                 if (high > 0.85f) { parts.add("head"); }
                 return parts.toArray(new String[0]);
@@ -413,7 +466,7 @@ public class RealisticDamage {
                     affectedParts.add("left leg");
                     affectedParts.add("right leg");
                 }
-                //Torso level (37.5-75% of height)
+                //Chest level (37.5-75% of height)
                 if (lavaDepth >= 0.469) {
                     affectedParts.add("chest");
                     affectedParts.add("left arm");
@@ -588,7 +641,11 @@ public class RealisticDamage {
         // TODO THROWN is unknown so will end up here (also SONIC_BOOM)
         return new String[]{"vanilla"}; //Unknown damage type
     }
-    private static String getWoundLocation(ArrayList<String> include) {
+    private static String getWoundLocation(String[] damageType, Entity directEntity, Player player) {
+        if(directEntity instanceof Arrow arrow){
+            return detectHitBodyPart(player, arrow);
+        }
+
         final String[] BODY_PARTS = {"head", "chest", "left arm", "right arm", "left leg", "right leg", "left foot", "right foot"};
         final int[] WEIGHTS = {10, 30, 15, 15, 12, 12, 3, 3};
         Random r = new Random();
@@ -596,7 +653,7 @@ public class RealisticDamage {
         String selectedPart = "";
 
         for (int i = 0; i < BODY_PARTS.length; i++) {
-            if(include != null && !include.contains(BODY_PARTS[i])) continue;
+            if(damageType.length > 1 && !Arrays.asList(damageType).contains(BODY_PARTS[i])) continue;
             int score = r.nextInt(WEIGHTS[i] + 1); //Value from 0 to the weight
             if (score > maxScore) {
                 maxScore = score;
@@ -607,38 +664,122 @@ public class RealisticDamage {
         return selectedPart;
     }
 
-    private static String detectHitBodyPart(Player player, Arrow arrow) {
-        Vec3 arrowPos = arrow.position();
-        Vec3 playerPos = player.position();
+    private static String detectHitBodyPart(Player player, AbstractArrow arrow) {
+        String[] parts = {"head", "chest", "right arm", "left arm", "right leg", "left leg"};
+        double[][] regions = {
+                {-0.25, 1.36, -0.25, 0.25, 1.86, 0.25},
+                {-0.25, 0.68, -0.13, 0.25, 1.36, 0.13},
+                {0.25, 0.66, -0.13, 0.52, 1.38, 0.13},
+                {-0.52, 0.66, -0.13, -0.25, 1.38, 0.13},
+                {0.0, 0.0, -0.13, 0.25, 0.68, 0.13},
+                {-0.25, 0.0, -0.13, 0.0, 0.68, 0.13}
+        };
+        AABB hitbox = player.getBoundingBox();
+        double width = Math.max(hitbox.getXsize(), 0.05);
+        double height = Math.max(hitbox.getYsize(), 0.05);
+        boolean prone = height < width * 1.2;
+        double horizontalScale = width / 0.6;
+        double verticalScale = prone ? horizontalScale : height / 1.8;
 
-        double relativeX = arrowPos.x - playerPos.x;
-        double relativeY = arrowPos.y - playerPos.y;
-        double relativeZ = arrowPos.z - playerPos.z;
-
-        //Simple hit detection based on relative position
-
-        if (relativeY > player.getBbHeight() * 0.8) {
-            return "head";
-        } else if (relativeY > player.getBbHeight() * 0.4) {
-            if (relativeX > 0.3 || relativeZ > 0.3) {
-                return "right arm";
-            }
-            else if(relativeX < 0.3 || relativeZ < 0.3) {
-                return "left arm";
-            }
-            else{
-                return "chest";
-            }
-        } else {
-            if (relativeX > 0.3 || relativeZ > 0.3) {
-                return "right leg";
-            }
-            else if(relativeX < 0.3 || relativeZ < 0.3) {
-                return "left leg";
+        Vec3 up = new Vec3(0.0, 1.0, 0.0);
+        if (prone) {
+            double pitch = Math.toRadians(player.getXRot());
+            double yaw = Math.toRadians(player.getYRot());
+            double cosPitch = Math.cos(pitch);
+            Vec3 look = new Vec3(-Math.sin(yaw) * cosPitch, -Math.sin(pitch), Math.cos(yaw) * cosPitch);
+            if (look.lengthSqr() > 1.0E-8) {
+                up = look.normalize();
             }
         }
 
-        return "chest";
+        double bodyYaw = Math.toRadians(player.yBodyRot);
+        Vec3 right = new Vec3(-Math.cos(bodyYaw), 0.0, -Math.sin(bodyYaw));
+        right = right.subtract(up.scale(right.dot(up)));
+        if (right.lengthSqr() < 1.0E-8) {
+            right = new Vec3(up.z, 0.0, -up.x);
+        }
+        if (right.lengthSqr() < 1.0E-8) {
+            right = new Vec3(1.0, 0.0, 0.0);
+        }
+        right = right.normalize();
+        Vec3 front = up.cross(right).normalize();
+
+        Vec3 origin = prone
+                ? player.getEyePosition().subtract(up.scale(1.62 * verticalScale))
+                : new Vec3((hitbox.minX + hitbox.maxX) * 0.5, hitbox.minY, (hitbox.minZ + hitbox.maxZ) * 0.5);
+
+        Vec3 motion = arrow.getDeltaMovement();
+        if (motion.lengthSqr() < 1.0E-8) {
+            motion = origin.add(up.scale(0.9 * verticalScale)).subtract(arrow.position());
+        }
+        if (motion.lengthSqr() < 1.0E-8) {
+            motion = new Vec3(0.0, -1.0, 0.0);
+        }
+
+        Vec3 direction = motion.normalize();
+        Vec3 offset = arrow.position().subtract(direction.scale(4.0)).subtract(origin);
+        double[] start = {offset.dot(right), offset.dot(up), offset.dot(front)};
+        double[] slope = {direction.dot(right), direction.dot(up), direction.dot(front)};
+        double reach = 5.5 + motion.length();
+
+        int hit = -1;
+        double bestEntry = Double.MAX_VALUE;
+        for (int i = 0; i < regions.length; i++) {
+            double near = Double.NEGATIVE_INFINITY;
+            double far = Double.POSITIVE_INFINITY;
+            boolean miss = false;
+            for (int axis = 0; axis < 3 && !miss; axis++) {
+                double scale = axis == 1 ? verticalScale : horizontalScale;
+                double low = regions[i][axis] * scale;
+                double high = regions[i][axis + 3] * scale;
+                if (Math.abs(slope[axis]) < 1.0E-9) {
+                    miss = start[axis] < low || start[axis] > high;
+                    continue;
+                }
+                double first = (low - start[axis]) / slope[axis];
+                double second = (high - start[axis]) / slope[axis];
+                if (first > second) {
+                    double swap = first;
+                    first = second;
+                    second = swap;
+                }
+                near = Math.max(near, first);
+                far = Math.min(far, second);
+                miss = near > far;
+            }
+            if (miss || far < 0.0) {
+                continue;
+            }
+            double entry = Math.max(near, 0.0);
+            if (entry <= reach && entry < bestEntry) {
+                bestEntry = entry;
+                hit = i;
+            }
+        }
+        if (hit >= 0) {
+            return parts[hit];
+        }
+
+        double travel = Math.max(0.0, Math.min(reach, -start[0] * slope[0]
+                + (0.9 * verticalScale - start[1]) * slope[1] - start[2] * slope[2]));
+        double[] closest = {start[0] + slope[0] * travel, start[1] + slope[1] * travel, start[2] + slope[2] * travel};
+
+        int nearest = 1;
+        double nearestDistance = Double.MAX_VALUE;
+        for (int i = 0; i < regions.length; i++) {
+            double total = 0.0;
+            for (int axis = 0; axis < 3; axis++) {
+                double scale = axis == 1 ? verticalScale : horizontalScale;
+                double gap = Math.max(Math.max(regions[i][axis] * scale - closest[axis], 0.0),
+                        closest[axis] - regions[i][axis + 3] * scale);
+                total += gap * gap;
+            }
+            if (total < nearestDistance) {
+                nearestDistance = total;
+                nearest = i;
+            }
+        }
+        return parts[nearest];
     }
 
     //Lower pain level with packets and update player modifiers.
