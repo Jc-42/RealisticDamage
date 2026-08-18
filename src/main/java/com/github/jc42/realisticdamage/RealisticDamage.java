@@ -266,6 +266,7 @@ public class RealisticDamage {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onPlayerDamagePre(LivingDamageEvent.Pre event) {
         //TODO when wearing armor on the hit body part the amount of health the armor prevents scales a percentage chance to turn any wound type into a blunt
+        //TODO use #bypasses_armor
         //TODO when considering the amount of health lost for calcs, only look at armor reduction for the body part hit. So if hit on chest look at the damage they would recieve if wearing only chestplate (if chestplate is on)
         //TODO make bleed go head > chest > legs > arms > feet
         if (event.getEntity() instanceof Player player) {
@@ -329,15 +330,15 @@ public class RealisticDamage {
         }
     }
 
-    private static String[] classifyDamage(DamageSource source, Entity directEntity, Player player) {
-        //TODO make sure new 26.2 types are classified correctly
-        //TODO add fracture and hematoma
-        //TODO magic damage, wither damage
+        private static String[] classifyDamage(DamageSource source, Entity directEntity, Player player) {
+        //TODO make blunt have chance to add a fracture too
         //TODO make lava more than just a burn
         if (source.is(DamageTypes.IN_FIRE) ||
                 source.is(DamageTypes.LAVA) ||
                 source.is(DamageTypes.ON_FIRE) ||
                 source.is(DamageTypes.HOT_FLOOR) ||
+                source.is(DamageTypes.SULFUR_CUBE_HOT) ||
+                source.is(DamageTypes.CAMPFIRE) ||
                 source.is(DamageTypes.LIGHTNING_BOLT) ||
                 source.is(DamageTypes.DRAGON_BREATH) ||
                 source.is(DamageTypes.FREEZE) ||
@@ -350,8 +351,34 @@ public class RealisticDamage {
             if(source.is(DamageTypes.IN_FIRE)){
                 return new String[]{"burn", "left foot" , "right foot", "left leg", "right leg"};
             }
-            if(source.is(DamageTypes.HOT_FLOOR)){
+            if(source.is(DamageTypes.HOT_FLOOR) ||
+                source.is(DamageTypes.CAMPFIRE)){
                 return new String[]{"burn", "left foot", "right foot"};
+            }
+            if (source.is(DamageTypes.SULFUR_CUBE_HOT)) {
+                Entity cube = directEntity != null ? directEntity : source.getEntity();
+
+                if (cube == null) return new String[]{"burn", "left foot", "right foot"};
+
+                AABB victim = player.getBoundingBox();
+                AABB hazard = cube.getBoundingBox();
+                double lo = Math.max(victim.minY, hazard.minY);
+                double hi = Math.min(victim.maxY, hazard.maxY);
+
+                if (hi <= lo) return new String[]{"burn", "left foot", "right foot"};
+
+                double height = victim.getYsize();
+                float low = (float) ((lo - victim.minY) / height);
+                float high = (float) ((hi - victim.minY) / height);
+
+                List<String> parts = new ArrayList<>();
+                parts.add("burn");
+                if (low < 0.08f) { parts.add("left foot"); parts.add("right foot"); }
+                if (high > 0.05f && low < 0.30f) { parts.add("left leg"); parts.add("right leg"); }
+                if (high > 0.30f && low < 0.75f) { parts.add("torso"); }
+                if (high > 0.35f && low < 0.70f) { parts.add("left arm"); parts.add("right arm"); }
+                if (high > 0.85f) { parts.add("head"); }
+                return parts.toArray(new String[0]);
             }
 
             if (source.is(DamageTypes.LAVA)) {
@@ -409,10 +436,11 @@ public class RealisticDamage {
             if (weapon.is(ItemTags.SWORDS) || weapon.is(ItemTags.AXES) || weapon.is(ItemTags.HOES)) {
                 return new String[]{"laceration"};
             }
-            else if (weapon.is(ItemTags.PICKAXES)) {
+            else if (weapon.is(ItemTags.PICKAXES) || weapon.is(ItemTags.SPEARS)) {
                 return new String[]{"puncture"};
             }
             else {
+                //Includes Maces, Shovels, etc
                 return new String[]{"blunt"}; // TODO: If this is tier 3+ make it a laceration, otherwise make it a hematoma
             }
         }
@@ -424,10 +452,11 @@ public class RealisticDamage {
                     if (itemStack.is(ItemTags.SWORDS) || itemStack.is(ItemTags.AXES) || itemStack.is(ItemTags.HOES)) {
                         return new String[]{"laceration"};
                     }
-                    else if (itemStack.is(ItemTags.PICKAXES)) {
+                    else if (itemStack.is(ItemTags.PICKAXES) || itemStack.is(ItemTags.SPEARS)) {
                         return new String[]{"puncture"};
                     }
                     else{
+                        //Includes Maces, Shovels, etc
                         return new String[]{"blunt"};
                     }
                 }
@@ -448,6 +477,9 @@ public class RealisticDamage {
             }
         }
 
+        if (source.is(DamageTypes.MACE_SMASH)){
+            return new String[]{"blunt"};
+        }
         //TODO probably doesn't work and doesn't really need to but it'd be kinda cool
         if (source.is(DamageTypes.THORNS)) {
             if (directEntity != null) {
@@ -460,8 +492,10 @@ public class RealisticDamage {
             return new String[]{"blunt"};
         }
 
+        if (source.is(DamageTypes.SPIT) || source.is(DamageTypes.WIND_CHARGE)){
+            return new String[]{"hematoma"};
+        }
         if (source.is(DamageTypes.MOB_PROJECTILE)) {
-            //TODO check for new ones in 26.2
             if (directEntity instanceof LlamaSpit) {
                 return new String[]{"hematoma"};
             }
@@ -496,8 +530,10 @@ public class RealisticDamage {
                 source.is(DamageTypes.TRIDENT) ||
                 source.is(DamageTypes.FALLING_STALACTITE) ||
                 source.is(DamageTypes.STALAGMITE) ||
-                source.is(DamageTypes.STING)) {
-            return new String[]{"puncture"};
+                source.is(DamageTypes.STING) ||
+                source.is(DamageTypes.SPEAR)) {
+            if (source.is(DamageTypes.FALLING_STALACTITE)) return new String[]{"puncture", "head"};
+            else return new String[]{"puncture"};
         }
 
         if (source.is(DamageTypes.FALL) ||
@@ -505,11 +541,12 @@ public class RealisticDamage {
                 source.is(DamageTypes.FALLING_ANVIL) ||
                 source.is(DamageTypes.FALLING_BLOCK)) {
             if(source.is(DamageTypes.FALL)){
-                Random r = new Random();
                 return new String[]{"fracture", "left foot", "right foot", "left leg", "right leg"};
 
             }
-            if(source.is(DamageTypes.FALLING_BLOCK) || source.is(DamageTypes.FALLING_ANVIL)){
+            if(source.is(DamageTypes.FALLING_BLOCK) ||
+                    source.is(DamageTypes.FALLING_ANVIL) ||
+                    source.is(DamageTypes.FLY_INTO_WALL)){
                 return new String[]{"fracture", "head"};
             }
             return new String[]{"fracture"};
@@ -534,11 +571,9 @@ public class RealisticDamage {
 
         if(source.is(DamageTypes.IN_WALL) ||
                 source.is(DamageTypes.CRAMMING) ||
-                source.is(DamageTypes.DROWN)){
-            return new String[]{"vanilla"};
-        }
-
-        if(source.is(DamageTypes.STARVE) ||
+                source.is(DamageTypes.DROWN) ||
+                source.is(DamageTypes.STARVE) ||
+                source.is(DamageTypes.ENDER_PEARL) ||
                 source.is(DamageTypes.FELL_OUT_OF_WORLD) ||
                 source.is(DamageTypes.GENERIC) ||
                 source.is(DamageTypes.MAGIC) ||
@@ -550,7 +585,7 @@ public class RealisticDamage {
             return new String[]{"vanilla"}; //Handled the same as without the mod
         }
 
-
+        // TODO THROWN is unknown so will end up here (also SONIC_BOOM)
         return new String[]{"vanilla"}; //Unknown damage type
     }
     private static String getWoundLocation(ArrayList<String> include) {
