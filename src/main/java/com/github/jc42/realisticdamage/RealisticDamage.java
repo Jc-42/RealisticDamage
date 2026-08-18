@@ -325,7 +325,7 @@ public class RealisticDamage {
             }
 
             //Cancel damage
-            event.setNewDamage(0f);y
+            event.setNewDamage(0f);
         }
     }
 
