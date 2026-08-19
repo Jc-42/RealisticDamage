@@ -66,10 +66,11 @@ public class WoundsScreen extends Screen {
 
             // Adjust color based on severity
             int color = switch(wound.getSeverity()) {
+                case 0 -> 0xFFFFFFFF; // White
                 case 1 -> 0xFF00FF00; // Green
                 case 2 -> 0xFFFFFF00; // Yellow
                 case 3 -> 0xFFFF0000; // Red
-                default -> 0xFFFFFFFF; // White
+                default -> 0xFF800080;  // Purple
             };
 
             // Draw filled circle

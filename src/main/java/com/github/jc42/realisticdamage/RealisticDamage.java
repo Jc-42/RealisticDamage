@@ -3,7 +3,10 @@ package com.github.jc42.realisticdamage;
 import com.github.jc42.realisticdamage.network.PainLevelPacket;
 import com.github.jc42.realisticdamage.network.StopKeyPacket;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.RegistrySetBuilder;
+import net.minecraft.data.worldgen.BootstrapContext;
 import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -12,9 +15,7 @@ import net.minecraft.tags.FluidTags;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.util.Mth;
 import net.minecraft.util.TriState;
-import net.minecraft.world.damagesource.CombatRules;
-import net.minecraft.world.damagesource.DamageSource;
-import net.minecraft.world.damagesource.DamageTypes;
+import net.minecraft.world.damagesource.*;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
@@ -44,9 +45,11 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.neoforge.attachment.AttachmentType;
 import net.neoforged.neoforge.common.damagesource.DamageContainer;
+import net.neoforged.neoforge.data.event.GatherDataEvent;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
 import net.neoforged.neoforge.event.entity.living.LivingEvent;
+import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
@@ -90,6 +93,16 @@ public class RealisticDamage {
 
     private static final DeferredRegister<AttachmentType<?>> ATTACHMENT_TYPES =
             DeferredRegister.create(NeoForgeRegistries.Keys.ATTACHMENT_TYPES, MODID);
+
+    public static final ResourceKey<DamageType> BLEED = ResourceKey.create(
+            Registries.DAMAGE_TYPE,
+            Identifier.fromNamespaceAndPath(MODID, "bleed")
+    );
+
+    public static DamageSource bleed(ServerLevel level) {
+        return new DamageSource(
+                level.registryAccess().lookupOrThrow(Registries.DAMAGE_TYPE).getOrThrow(BLEED));
+    }
 
     public static final Supplier<AttachmentType<PainCapability>> PAIN = ATTACHMENT_TYPES.register(
             "pain",
@@ -307,12 +320,25 @@ public class RealisticDamage {
         return newDamage;
     }
 
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onPlayerDamagePre(LivingIncomingDamageEvent event) {
+        if (event.getEntity() instanceof Player player) {
+            DamageSource damageSource = event.getContainer().getSource();
+            Entity directEntity = damageSource.getDirectEntity();
+            String[] damageType = classifyDamage(damageSource, directEntity, player);
+
+            if (damageType[0].equals("bleed")) {
+                event.getContainer().setShouldCauseSideEffects(false);
+                event.setInvulnerabilityTicks(event.getEntity().invulnerableTime);
+                event.getEntity().invulnerableTime = 0;
+            }
+        }
+    }
+
     //Update pain level and send pain packet
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onPlayerDamagePre(LivingDamageEvent.Pre event) {
-        //TODO when wearing armor on the hit body part the amount of health the armor prevents scales a percentage chance to turn any wound type into a blunt
-        //TODO use #bypasses_armor
-        //TODO when considering the amount of health lost for calcs, only look at armor reduction for the body part hit. So if hit on chest look at the damage they would recieve if wearing only chestplate (if chestplate is on)
+        //TODO investigate arrow body part detection
         //TODO make bleed go head > chest > legs > arms > feet
         if (event.getEntity() instanceof Player player) {
 
@@ -321,71 +347,78 @@ public class RealisticDamage {
             DamageSource damageSource = event.getContainer().getSource();
             Entity directEntity = damageSource.getDirectEntity();
             String[] damageType = classifyDamage(damageSource, directEntity, player);
-            String bodyPart = getWoundLocation(damageType, directEntity, player);
+            if (!damageType[0].equals("vanilla") && !damageType[0].equals("bleed")) {
+                String bodyPart = getWoundLocation(damageType, directEntity, player);
 
 
-            float newDamage = switch (bodyPart) {
-                case "head" -> calculateDamageReduction(player, event, EquipmentSlot.HEAD);
-                case "chest", "left arm", "right arm" -> calculateDamageReduction(player, event, EquipmentSlot.CHEST);
-                case "left leg", "right leg" -> calculateDamageReduction(player, event, EquipmentSlot.LEGS);
-                case "left foot", "right foot" -> calculateDamageReduction(player, event, EquipmentSlot.FEET);
-                default -> event.getContainer().getNewDamage();
-            };
+                float newDamage = switch (bodyPart) {
+                    case "head" -> calculateDamageReduction(player, event, EquipmentSlot.HEAD);
+                    case "chest", "left arm", "right arm" ->
+                            calculateDamageReduction(player, event, EquipmentSlot.CHEST);
+                    case "left leg", "right leg" -> calculateDamageReduction(player, event, EquipmentSlot.LEGS);
+                    case "left foot", "right foot" -> calculateDamageReduction(player, event, EquipmentSlot.FEET);
+                    default -> event.getContainer().getNewDamage();
+                };
 
-            player.sendSystemMessage(Component.literal("Original Damage: " + event.getOriginalDamage() + " New Damage: " + event.getNewDamage() + " Container New: " + event.getContainer().getNewDamage() + " Custom New: " + newDamage));
+                player.sendSystemMessage(Component.literal("Original Damage: " + event.getOriginalDamage() + " New Damage: " + event.getNewDamage() + " Container New: " + event.getContainer().getNewDamage() + " Custom New: " + newDamage));
 
-            float fractionLost = newDamage / player.getMaxHealth();
-            int severity = fractionLost >= .40 ? 3 : (fractionLost >= .20 ? 2 : (fractionLost >= .10 ? 1 : 0));
+                float fractionLost = newDamage / player.getMaxHealth();
+                int severity = fractionLost >= .40 ? 3 : (fractionLost >= .20 ? 2 : (fractionLost >= .10 ? 1 : 0));
 
-            if (directEntity instanceof Arrow arrow) {
+                if (directEntity instanceof Arrow arrow) {
 
-                //region Test arrow lodging
+                    //region Test arrow lodging
 
 
-                //endregion
+                    //endregion
 
-                double[] position = {arrow.position().x, arrow.position().y, arrow.position().z, arrow.getXRot(), arrow.getYRot()};
+                    double[] position = {arrow.position().x, arrow.position().y, arrow.position().z, arrow.getXRot(), arrow.getYRot()};
 
-                pain.getLodgedArrowPositions().add(position);
+                    pain.getLodgedArrowPositions().add(position);
 
-                //TODO head code sets it to right arm?
-                //TODO it never triggers the left arm or the left leg
+                    //TODO head code sets it to right arm?
+                    //TODO it never triggers the left arm or the left leg
 
-                //TODO make it so that the severity is based on the amount of damage
-                pain.addWound(new Wound("Puncture", severity, bodyPart));
+                    //TODO make it so that the severity is based on the amount of damage
+                    pain.addWound(new Wound("Puncture", severity, bodyPart));
 
-            } else {
-                if (!damageType[0].equals("vanilla")) {
+                } else {
                     if (damageType[0].equals("blunt")) {
                         if (severity == 3) damageType[0] = "laceration";
                         else damageType[0] = "hematoma";
                     }
                     pain.addWound(new Wound(damageType[0], severity, bodyPart));
                 }
-            }
 
-            if (System.currentTimeMillis() - lastAdrenalineRushTime > adrenalineRushCooldown && pain.getAdrenalineLevel() == 0) {
-                if (pain.getChronicPainLevel() >= 30) {
-                    pain.setAdrenalineLevel(50 + ((pain.getChronicPainLevel() - 30) / 70) * 50);
-                    lastAdrenalineRushReset = false;
+                if (System.currentTimeMillis() - lastAdrenalineRushTime > adrenalineRushCooldown && pain.getAdrenalineLevel() == 0) {
+                    if (pain.getChronicPainLevel() >= 30) {
+                        pain.setAdrenalineLevel(50 + ((pain.getChronicPainLevel() - 30) / 70) * 50);
+                        lastAdrenalineRushReset = false;
+                    }
                 }
+
+                if (pain.getAdrenalineLevel() < 0) pain.setAdrenalineLevel(0);
+
+                if (pain.getAdrenalineLevel() > 100) pain.setAdrenalineLevel(100);
+                if (player instanceof ServerPlayer serverPlayer) {
+                    PacketDistributor.sendToPlayer(serverPlayer, new PainLevelPacket(pain.getAdrenalineLevel(), pain.getWounds()));
+                }
+
+                //Cancel damage
+                event.setNewDamage(0f);
+
             }
-
-            if (pain.getAdrenalineLevel() < 0) pain.setAdrenalineLevel(0);
-
-            if (pain.getAdrenalineLevel() > 100) pain.setAdrenalineLevel(100);
-            if (player instanceof ServerPlayer serverPlayer) {
-                PacketDistributor.sendToPlayer(serverPlayer, new PainLevelPacket(pain.getAdrenalineLevel(), pain.getWounds()));
-            }
-
-            //Cancel damage
-            event.setNewDamage(0f);
         }
     }
 
     private static String[] classifyDamage(DamageSource source, Entity directEntity, Player player) {
         //TODO make blunt have chance to add a fracture too
         //TODO make lava more than just a burn
+
+        if(source.is(BLEED)){
+            return new String[]{"bleed"};
+        }
+
         if (source.is(DamageTypes.IN_FIRE) ||
                 source.is(DamageTypes.LAVA) ||
                 source.is(DamageTypes.ON_FIRE) ||
@@ -791,16 +824,6 @@ public class RealisticDamage {
 
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             PainCapability pain = player.getData(RealisticDamage.PAIN);
-
-            if (pain.getChronicPainLevel() > 0 && pain.getAdrenalineLevel() == 0) {
-                //TODO replace with tickWounds
-                pain.getWounds().removeIf(wound -> wound.tick() <= 0);
-                if (bleedTick && pain.getBleedLevel() > 0 && player.level() instanceof ServerLevel serverLevel) {
-                    //500.0F to make
-                    player.setHealth(Math.max(0.0F, player.getHealth() - pain.getBleedLevel() ));
-                }
-            }
-
             if (pain.getAdrenalineLevel() > 0) {
                 pain.addAdrenaline(-.05f * 5); //Adrenaline pain lowers by 6 per second
                 if (pain.getAdrenalineLevel() < 0) pain.setAdrenalineLevel(0);
@@ -835,6 +858,13 @@ public class RealisticDamage {
                 if ((currentTime - lastJumpTime < jumpCooldown || pain.getChronicPainLevel() >= 90) && !player.isInFluidType()) {
                     PacketDistributor.sendToPlayer(player, new StopKeyPacket("jump"));
                     player.setJumping(false);
+                }
+            }
+            if (pain.getChronicPainLevel() > 0 && pain.getAdrenalineLevel() == 0) {
+                //TODO replace with tickWounds
+                pain.getWounds().removeIf(wound -> wound.tick() <= 0);
+                if (bleedTick && pain.getBleedLevel() > 0 && player.level() instanceof ServerLevel serverLevel) {
+                    player.hurtServer(serverLevel, bleed(serverLevel), pain.getBleedLevel() * 20.0F);
                 }
             }
         }

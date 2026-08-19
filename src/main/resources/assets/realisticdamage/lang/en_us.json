@@ -9,5 +9,6 @@
   "realisticdamage.configuration.items": "Item List",
   "realisticdamage.configuration.logDirtBlock": "Log Dirt Block",
   "realisticdamage.configuration.magicNumberIntroduction": "Magic Number Text",
-  "realisticdamage.configuration.magicNumber": "Magic Number"
+  "realisticdamage.configuration.magicNumber": "Magic Number",
+  "death.attack.realisticdamage.bleed": "%1$s bled out"
 }

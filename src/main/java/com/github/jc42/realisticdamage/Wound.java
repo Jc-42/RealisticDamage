@@ -86,8 +86,8 @@ public class Wound {
             case "laceration":
                 isFatal = isFatalRoll <= 10 && this.severity == 3;
                 pain = this.severity == 0 ? 10 : (this.severity == 1 ? 25 : (this.severity == 2 ? 40 : 80));
-                bleed = this.severity == 0 ? BASE_BLEED_ONE : (this.severity == 1 ? BASE_BLEED_TWO : (this.severity == 2 ? BASE_BLEED_THREE : BASE_BLEED_FATAL));
-                break;
+                    bleed = this.severity == 0 ? BASE_BLEED_ONE : (this.severity == 1 ? BASE_BLEED_TWO : (this.severity == 2 ? BASE_BLEED_THREE : BASE_BLEED_FATAL));
+                    break;
             case "abrasion":
                 isFatal = isFatalRoll <= 10 && this.severity == 3;
                 pain = this.severity == 0 ? 10 : (this.severity == 1 ? 25 : (this.severity == 2 ? 40 : 80));
@@ -120,7 +120,8 @@ public class Wound {
         int totalSeconds = minutes * 60 + seconds;
         int totalTicks = totalSeconds * 20;
 
-        return 20.0F / totalTicks;
+        //25 for the 5 saturation hearts
+        return 25.0F / totalTicks;
     }
 
     public void serialize(ValueOutput output) {

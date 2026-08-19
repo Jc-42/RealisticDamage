@@ -31,8 +31,8 @@ public class PainCapability implements ValueIOSerializable {
     public float getBleedLevel() {
         float totalBleed = 0;
 
-        for (int i = 0; i < wounds.size(); i++) {
-            totalBleed += wounds.get(i).getBleed();
+        for (Wound wound : wounds) {
+            totalBleed += wound.getBleed();
         }
 
         return totalBleed;
