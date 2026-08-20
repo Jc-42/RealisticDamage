@@ -1006,7 +1006,7 @@ public class RealisticDamage {
         }
 
         AttributeInstance attackSpeed = player.getAttribute(Attributes.ATTACK_SPEED);
-
+        //TODO make adrenaline increase attack damage
         if (attackSpeed != null) {
 
             AttributeModifier existingModifier = attackSpeed.getModifier(PAIN_ATTACK_SPEED_MODIFIER_ID);
