@@ -2,6 +2,7 @@
   "itemGroup.realisticdamage": "Example Mod Tab",
   "block.realisticdamage.example_block": "Example Block",
   "item.realisticdamage.example_item": "Example Item",
+  "item.realisticdamage.crude_bandage": "Crude Bandage",
 
   "realisticdamage.configuration.title": "Realistic Damage Configs",
   "realisticdamage.configuration.section.realisticdamage.common.toml": "Realistic Damage Configs",

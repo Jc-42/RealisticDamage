@@ -1,24 +1,35 @@
 package com.github.jc42.realisticdamage;
 
+import com.github.jc42.realisticdamage.item.Bandage;
+import com.github.jc42.realisticdamage.network.ApplyBandagePacket;
+import com.github.jc42.realisticdamage.network.PacketHandler;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 
 public class WoundsScreen extends Screen {
     private static final Identifier WOUNDS_LOCATION = Identifier.fromNamespaceAndPath(RealisticDamage.MODID, "textures/gui/wound_inventory.png");
     private final int imageWidth = 176;
     private final int imageHeight = 166;
     private Player player;
+    private ItemStack bandageStack;
 
     public WoundsScreen(Player player) {
+        this(player, ItemStack.EMPTY);
+    }
+
+    public WoundsScreen(Player player, ItemStack bandageStack) {
         super(Component.literal("Wounds"));
         this.player = player;
+        this.bandageStack = bandageStack;
     }
 
     @Override
@@ -95,6 +106,28 @@ public class WoundsScreen extends Screen {
                 gui.setTooltipForNextFrame(Component.literal(tooltip), mouseX, mouseY);
             }
         }
+    }
+
+    @Override
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        if (!bandageStack.isEmpty() && bandageStack.getItem() instanceof Bandage) {
+            PainCapability painCap = player.getData(RealisticDamage.PAIN);
+            int screenX = (this.width - this.imageWidth) / 2;
+            int screenY = (this.height - this.imageHeight) / 2;
+            int size = 3;
+
+            for (int i = 0; i < painCap.getWounds().size(); i++) {
+                Wound wound = painCap.getWounds().get(i);
+                if (event.x() >= screenX + wound.getPosX() - size / 2 &&
+                        event.x() <= screenX + wound.getPosX() + size / 2 &&
+                        event.y() >= screenY + wound.getPosY() - size / 2 &&
+                        event.y() <= screenY + wound.getPosY() + size / 2) {
+                    PacketHandler.Client.sendToServer(new ApplyBandagePacket(i));
+                    return true;
+                }
+            }
+        }
+        return super.mouseClicked(event, doubleClick);
     }
 
     @Override

@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "XXX",
+    "X X",
+    "SSS"
+  ],
+  "key": {
+    "X": ["minecraft:moss_block", "minecraft:leaf_litter"],
+    "S": "minecraft:string"
+  },
+  "result": {
+    "id": "realisticdamage:crude_bandage",
+    "count": 1
+  }
+}

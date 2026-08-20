@@ -23,6 +23,7 @@ public class PacketHandler {
 
         registrar.playToClient(PainLevelPacket.TYPE, PainLevelPacket.STREAM_CODEC);
         registrar.playToClient(StopKeyPacket.TYPE, StopKeyPacket.STREAM_CODEC);
+        registrar.playToServer(ApplyBandagePacket.TYPE, ApplyBandagePacket.STREAM_CODEC, ApplyBandagePacket::handle);
     }
 
     public static void sendToPlayer(CustomPacketPayload msg, Supplier<ServerPlayer> player) {

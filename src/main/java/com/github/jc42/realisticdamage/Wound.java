@@ -1,9 +1,12 @@
 package com.github.jc42.realisticdamage;
 
 import io.netty.buffer.ByteBuf;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 
@@ -19,6 +22,7 @@ public class Wound {
     private int ticksRemaining;
     private int pain;
     private float bleed;
+    private Item appliedBandage;
     private final int SEVERITY_ZERO_TICKS = 800; // ~40 seconds
     private final int SEVERITY_ONE_TICKS = 12000; // ~10 minutes
     private final int SEVERITY_TWO_TICKS = 36000; // ~30 minutes
@@ -134,6 +138,9 @@ public class Wound {
         output.putFloat("bleed", bleed);
         output.putInt("posX", posX);
         output.putInt("posY", posY);
+        if (appliedBandage != null) {
+            output.putString("appliedBandage", BuiltInRegistries.ITEM.getKey(appliedBandage).toString());
+        }
     }
 
     public void deserialize(ValueInput input) {
@@ -146,6 +153,8 @@ public class Wound {
         this.bleed = input.getFloatOr("bleed", 0.0F);
         this.posX = input.getIntOr("posX", 0);
         this.posY = input.getIntOr("posY", 0);
+        String bandageId = input.getStringOr("appliedBandage", "");
+        this.appliedBandage = bandageId.isEmpty() ? null : BuiltInRegistries.ITEM.getValue(Identifier.parse(bandageId));
     }
 
     /**
@@ -247,6 +256,14 @@ public class Wound {
         return isFatal;
     }
 
+    public Item getAppliedBandage() {
+        return appliedBandage;
+    }
+
+    public void setAppliedBandage(Item appliedBandage) {
+        this.appliedBandage = appliedBandage;
+    }
+
     public static boolean validWoundType(String woundType){
         if(woundType.equalsIgnoreCase("laceration") ||
                 woundType.equals("abrasion") ||
@@ -271,6 +288,7 @@ public class Wound {
                 ByteBufCodecs.FLOAT.encode(buffer, wound.bleed);
                 ByteBufCodecs.INT.encode(buffer, wound.posX);
                 ByteBufCodecs.INT.encode(buffer, wound.posY);
+                ByteBufCodecs.STRING_UTF8.encode(buffer, wound.appliedBandage == null ? "" : BuiltInRegistries.ITEM.getKey(wound.appliedBandage).toString());
             },
             buffer -> {
                 int severity = ByteBufCodecs.VAR_INT.decode(buffer);
@@ -285,6 +303,8 @@ public class Wound {
                 wound.bleed = ByteBufCodecs.FLOAT.decode(buffer);
                 wound.posX = ByteBufCodecs.INT.decode(buffer);
                 wound.posY = ByteBufCodecs.INT.decode(buffer);
+                String bandageId = ByteBufCodecs.STRING_UTF8.decode(buffer);
+                wound.appliedBandage = bandageId.isEmpty() ? null : BuiltInRegistries.ITEM.getValue(Identifier.parse(bandageId));
                 return wound;
             }
     );

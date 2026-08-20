@@ -1,5 +1,6 @@
 package com.github.jc42.realisticdamage;
 
+import com.github.jc42.realisticdamage.item.CrudeBandage;
 import com.github.jc42.realisticdamage.network.PainLevelPacket;
 import com.github.jc42.realisticdamage.network.StopKeyPacket;
 import net.minecraft.core.BlockPos;
@@ -88,6 +89,11 @@ import java.util.function.Supplier;
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
 @Mod(RealisticDamage.MODID)
 public class RealisticDamage {
+    //TODO make the pain bar not cover the bubbles
+    //TODO make wound dissapear from screen once healed
+    //TODO make the names different to indicate severity.
+    // ex: tier 0 fracture could be minor sprain, tier 1 is sprain tier 2 is minor fracture tier 3 is fracture
+
     // Define mod id in a common place for everything to reference
     public static final String MODID = "realisticdamage";
 
@@ -180,6 +186,9 @@ public class RealisticDamage {
     public static final DeferredItem<Item> EXAMPLE_ITEM = ITEMS.registerSimpleItem("example_item", p -> p.food(new FoodProperties.Builder()
             .alwaysEdible().nutrition(1).saturationModifier(2f).build()));
 
+    public static final DeferredItem<CrudeBandage> CRUDE_BANDAGE = ITEMS.registerItem("crude_bandage",
+            CrudeBandage::new, p -> p.stacksTo(16));
+
     // Creates a creative tab with the id "realisticdamage:example_tab" for the example item, that is placed after the combat tab
     public static final DeferredHolder<CreativeModeTab, CreativeModeTab> EXAMPLE_TAB = CREATIVE_MODE_TABS.register("example_tab", () -> CreativeModeTab.builder()
             .title(Component.translatable("itemGroup.realisticdamage")) //The language key for the title of your CreativeModeTab
@@ -234,6 +243,9 @@ public class RealisticDamage {
     private void addCreative(BuildCreativeModeTabContentsEvent event) {
         if (event.getTabKey() == CreativeModeTabs.BUILDING_BLOCKS) {
             event.accept(EXAMPLE_BLOCK_ITEM);
+        }
+        if (event.getTabKey() == CreativeModeTabs.COMBAT) {
+            event.accept(CRUDE_BANDAGE);
         }
     }
 
