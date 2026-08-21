@@ -98,7 +98,7 @@ public class PainCapability implements ValueIOSerializable {
 
         this.wounds.clear();
         for (ValueInput woundInput : input.childrenListOrEmpty("wounds")) {
-            Wound wound = new Wound("Laceration", 1, "Head");
+            Wound wound = new Wound("Laceration", 1, "head");
             wound.deserialize(woundInput);
             wounds.add(wound);
         }

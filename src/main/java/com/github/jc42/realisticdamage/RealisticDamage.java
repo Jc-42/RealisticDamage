@@ -92,8 +92,7 @@ import java.util.function.Supplier;
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
 @Mod(RealisticDamage.MODID)
 public class RealisticDamage {
-    //TODO make the names different to indicate severity.
-    // ex: tier 0 fracture could be minor sprain, tier 1 is sprain tier 2 is minor fracture tier 3 is fracture
+    //TODO make fractures need splints which reduce the pain instead of how bandages reduce bleed (this will also reduce the speed debuff)
 
     // Define mod id in a common place for everything to reference
     public static final String MODID = "realisticdamage";

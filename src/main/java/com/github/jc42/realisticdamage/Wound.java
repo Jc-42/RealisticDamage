@@ -99,7 +99,7 @@ public class Wound {
                 break;
             case "burn":
                 pain = this.severity == 0 ? 10 : (this.severity == 1 ? 25 : (this.severity == 2 ? 40 : 80));
-                bleed = 0;
+                bleed = 0; //TODO make burn have a super high chance of infection
                 break;
         }
 
@@ -268,6 +268,40 @@ public class Wound {
                 woundType.equals("fracture") ||
                 woundType.equals("burn") ||
                 woundType.equals("blunt");
+    }
+
+    public String getName(){
+        if(type.equals("laceration") && severity == 0) return "Minor Cut";
+        if(type.equals("laceration") && severity == 1) return "Cut";
+        if(type.equals("laceration") && severity == 2) return "Gash";
+        if(type.equals("laceration") && severity == 3) return "Deep Gash";
+
+        if(type.equals("abrasion") && severity == 0) return "Graze";
+        if(type.equals("abrasion") && severity == 1) return "Minor Scrape";
+        if(type.equals("abrasion") && severity == 2) return "Scrape";
+        if(type.equals("abrasion") && severity == 3) return "Deep Scrape";
+
+        if(type.equals("puncture") && severity == 0) return "Minor Puncture";
+        if(type.equals("puncture") && severity == 1) return "Puncture";
+        if(type.equals("puncture") && severity == 2) return "Stab";
+        if(type.equals("puncture") && severity == 3) return "Deep Stab";
+
+        if(type.equals("hematoma") && severity == 0) return "Minor Bruise";
+        if(type.equals("hematoma") && severity == 1) return "Bruise";
+        if(type.equals("hematoma") && severity == 2) return "Hematoma";
+        if(type.equals("hematoma") && severity == 3) return "Large Hematoma";
+
+        if(type.equals("fracture") && severity == 0) return "Minor Sprain";
+        if(type.equals("fracture") && severity == 1) return "Sprain";
+        if(type.equals("fracture") && severity == 2) return "Fracture";
+        if(type.equals("fracture") && severity == 3) return "Severe Fracture";
+
+        if(type.equals("burn") && severity == 0) return "1st Degree Burn";
+        if(type.equals("burn") && severity == 1) return "2nd Degree Burn";
+        if(type.equals("burn") && severity == 2) return "3rd Degree Burn";
+        if(type.equals("burn") && severity == 3) return "4th Degree Burn";
+
+        else throw new IllegalArgumentException("Invalid wound type: " + type);
     }
 
     public static final StreamCodec<ByteBuf, Wound> STREAM_CODEC = StreamCodec.of(

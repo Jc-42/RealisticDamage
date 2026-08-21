@@ -101,14 +101,17 @@ public class WoundsScreen extends Screen {
                     mouseY >= screenY + wound.getPosY() - size/2 &&
                     mouseY <= screenY + wound.getPosY() + size/2) {
 
-                Component tooltipHeader = Component.literal(String.format("%s - %s (Healed: ~%.1f%%)",
-                        wound.getType(),
-                        wound.getBodyPart(),
+                Component tooltipHeader = Component.literal(String.format("%s",
+                        toTitleCase(wound.getBodyPart())));
+
+                Component tooltipWound = Component.literal(String.format("%s (Healed: ~%.1f%%)",
+                        wound.getName(),
                         (1 - (float)wound.getTicksRemaining() / wound.SEVERITY_TICKS[wound.getSeverity()]) * 100.0F));
+
                 Component tooltipBandage = wound.getAppliedBandage() == null
                         ? Component.literal("No Bandage")
                         : Component.translatable(wound.getAppliedBandage().getDescriptionId());
-                gui.setComponentTooltipForNextFrame(this.font, List.of(tooltipHeader, tooltipBandage), mouseX, mouseY);
+                gui.setComponentTooltipForNextFrame(this.font, List.of(tooltipHeader, tooltipWound, tooltipBandage), mouseX, mouseY);
             }
         }
     }
@@ -146,5 +149,13 @@ public class WoundsScreen extends Screen {
 
     public int getGuiTop() {
         return 0;
+    }
+
+    public String toTitleCase(String s){
+        String[] words = s.split(" ");
+        for(int i = 0; i < words.length; i++){
+            words[i] = words[i].substring(0, 1).toUpperCase() + words[i].substring(1);
+        }
+        return String.join(" ", words);
     }
 }
