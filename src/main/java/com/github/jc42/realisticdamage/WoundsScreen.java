@@ -99,10 +99,10 @@ public class WoundsScreen extends Screen {
                     mouseY >= screenY + wound.getPosY() - size/2 &&
                     mouseY <= screenY + wound.getPosY() + size/2) {
 
-                String tooltip = String.format("%s - %s (Time Remaining: ~%ds)",
+                String tooltip = String.format("%s - %s (Healed: ~%.1f%%)",
                         wound.getType(),
                         wound.getBodyPart(),
-                        (int)(wound.getTicksRemaining() / 20.0f));
+                        (1 - (float)wound.getTicksRemaining() / wound.SEVERITY_TICKS[wound.getSeverity()]) * 100.0F);
                 gui.setTooltipForNextFrame(Component.literal(tooltip), mouseX, mouseY);
             }
         }

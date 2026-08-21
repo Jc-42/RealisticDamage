@@ -8,8 +8,17 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.level.Level;
 
 public abstract class Bandage extends Item {
-    public Bandage(Properties properties) {
+    private float[] bleedScale; //Where index 0 equates to severity 0 and so on
+    private final float[] severityHealSpeedScale = {0.25F, 0.50F, 0.75F, 1.0F}; //Multiplied with the healSpeedScale to get the final
+    private float painScale;
+    private float maxHealSpeedScale;
+
+
+    public Bandage(Properties properties, float[] bleedScale, float healSpeedScale) {
         super(properties);
+        if(bleedScale.length != 4) throw new RuntimeException("bleedScale must be exactly four elements");
+        this.bleedScale = bleedScale;
+        this.maxHealSpeedScale = healSpeedScale;
     }
 
     @Override
@@ -18,5 +27,17 @@ public abstract class Bandage extends Item {
             Minecraft.getInstance().gui.setScreen(new com.github.jc42.realisticdamage.WoundsScreen(player, player.getItemInHand(hand)));
         }
         return InteractionResult.SUCCESS;
+    }
+
+    public float getBleedScale(int severity){
+        return bleedScale[severity];
+    }
+
+    /**
+     * @param severity The severity of the wound
+     * @return A float to scale the heal speed, will not be less than 1
+     */
+    public float getHealSpeedScale(int severity){
+        return Math.max(maxHealSpeedScale * severityHealSpeedScale[severity], 1.0F);
     }
 }

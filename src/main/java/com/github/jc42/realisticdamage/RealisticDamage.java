@@ -1,6 +1,9 @@
 package com.github.jc42.realisticdamage;
 
 import com.github.jc42.realisticdamage.item.CrudeBandage;
+import com.github.jc42.realisticdamage.item.HoneyBandage;
+import com.github.jc42.realisticdamage.item.LeatherBandage;
+import com.github.jc42.realisticdamage.item.WoolBandage;
 import com.github.jc42.realisticdamage.network.PainLevelPacket;
 import com.github.jc42.realisticdamage.network.StopKeyPacket;
 import net.minecraft.core.BlockPos;
@@ -189,6 +192,15 @@ public class RealisticDamage {
     public static final DeferredItem<CrudeBandage> CRUDE_BANDAGE = ITEMS.registerItem("crude_bandage",
             CrudeBandage::new, p -> p.stacksTo(16));
 
+    public static final DeferredItem<LeatherBandage> LEATHER_BANDAGE = ITEMS.registerItem("leather_bandage",
+            LeatherBandage::new, p -> p.stacksTo(16));
+
+    public static final DeferredItem<WoolBandage> WOOL_BANDAGE = ITEMS.registerItem("wool_bandage",
+            WoolBandage::new, p -> p.stacksTo(16));
+
+    public static final DeferredItem<HoneyBandage> HONEY_BANDAGE = ITEMS.registerItem("honey_bandage",
+            HoneyBandage::new, p -> p.stacksTo(16));
+
     // Creates a creative tab with the id "realisticdamage:example_tab" for the example item, that is placed after the combat tab
     public static final DeferredHolder<CreativeModeTab, CreativeModeTab> EXAMPLE_TAB = CREATIVE_MODE_TABS.register("example_tab", () -> CreativeModeTab.builder()
             .title(Component.translatable("itemGroup.realisticdamage")) //The language key for the title of your CreativeModeTab
@@ -246,6 +258,10 @@ public class RealisticDamage {
         }
         if (event.getTabKey() == CreativeModeTabs.COMBAT) {
             event.accept(CRUDE_BANDAGE);
+            event.accept(LEATHER_BANDAGE);
+            event.accept(WOOL_BANDAGE);
+            event.accept(HONEY_BANDAGE);
+
         }
     }
 
@@ -877,6 +893,7 @@ public class RealisticDamage {
                 pain.getWounds().removeIf(wound -> wound.tick() <= 0);
                 if (bleedTick && pain.getBleedLevel() > 0 && player.level() instanceof ServerLevel serverLevel) {
                     player.hurtServer(serverLevel, bleed(serverLevel), pain.getBleedLevel() * 20.0F);
+                    player.sendSystemMessage(Component.literal("Bleed per tick: " + pain.getBleedLevel()));
                 }
             }
         }

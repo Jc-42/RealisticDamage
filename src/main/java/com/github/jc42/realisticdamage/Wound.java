@@ -1,12 +1,11 @@
 package com.github.jc42.realisticdamage;
 
+import com.github.jc42.realisticdamage.item.Bandage;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.resources.Identifier;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 
@@ -22,15 +21,13 @@ public class Wound {
     private int ticksRemaining;
     private int pain;
     private float bleed;
-    private Item appliedBandage;
-    private final int SEVERITY_ZERO_TICKS = 800; // ~40 seconds
-    private final int SEVERITY_ONE_TICKS = 12000; // ~10 minutes
-    private final int SEVERITY_TWO_TICKS = 36000; // ~30 minutes
-    private final int SEVERITY_THREE_TICKS = 72000; // ~1 hour
-    private final float BASE_BLEED_ONE = damagePerTick(2, 0);
-    private final float BASE_BLEED_TWO = damagePerTick(1, 0);
-    private final float BASE_BLEED_THREE = damagePerTick(0, 30);
-    private final float BASE_BLEED_FATAL = damagePerTick(1, 30);
+    private Bandage appliedBandage = null;
+    // ~40 sec, ~10 min, ~30 min, ~1 hour
+    public final int[] SEVERITY_TICKS = {800, 12000, 36000, 72000};
+    public final float BASE_BLEED_ONE = damagePerTick(2, 0);
+    public final float BASE_BLEED_TWO = damagePerTick(1, 0);
+    public final float BASE_BLEED_THREE = damagePerTick(0, 30);
+    public final float BASE_BLEED_FATAL = damagePerTick(1, 30);
     //TODO make fatal wounds bleed be 80%? reduced after applying a bandage
 
     /**
@@ -72,18 +69,8 @@ public class Wound {
         int isFatalRoll = r.nextInt(101);
 
         //24000 = 1 day
-        if(severity == 0){
-            ticksRemaining = SEVERITY_ZERO_TICKS; // .03 days
-        }
-        if(severity == 1){
-            ticksRemaining = SEVERITY_ONE_TICKS; //.5 days
-        }
-        else if(severity == 2){
-            ticksRemaining = SEVERITY_TWO_TICKS; //1.5 days
-        }
-        else if(severity == 3){
-            ticksRemaining = SEVERITY_THREE_TICKS; // 3 days
-        }
+        //Days per sev: .03, .5, 1.5, 3
+        ticksRemaining = SEVERITY_TICKS[severity];
 
         //Set fatal if severity is 3, type is an open wound, and isFatalRoll <= 10
         switch (this.type){
@@ -154,7 +141,7 @@ public class Wound {
         this.posX = input.getIntOr("posX", 0);
         this.posY = input.getIntOr("posY", 0);
         String bandageId = input.getStringOr("appliedBandage", "");
-        this.appliedBandage = bandageId.isEmpty() ? null : BuiltInRegistries.ITEM.getValue(Identifier.parse(bandageId));
+        this.appliedBandage = bandageId.isEmpty() ? null : (Bandage) BuiltInRegistries.ITEM.getValue(Identifier.parse(bandageId));
     }
 
     /**
@@ -162,6 +149,14 @@ public class Wound {
      * @return ticksRemaining
      */
     public int tick(){
+        //Since ticks are ints we use the fractional part as a probability that we subtract an extra tick.
+        if(appliedBandage != null) {
+            float frac = appliedBandage.getHealSpeedScale(severity) - (int) appliedBandage.getHealSpeedScale(severity);
+            ticksRemaining = ticksRemaining - (int) appliedBandage.getHealSpeedScale(severity);
+            Random r = new Random();
+            if(r.nextFloat(1) < frac) ticksRemaining--;
+            return ticksRemaining;
+        }
         return --ticksRemaining;
     }
 
@@ -244,11 +239,12 @@ public class Wound {
      * @return the pain of this wound accounting for how much it healed
      */
     public float getPain(){
-        float ticksPercentage = 1 - ((float)ticksRemaining / (this.severity == 0 ? SEVERITY_ZERO_TICKS : (this.severity == 1 ? SEVERITY_ONE_TICKS : (this.severity == 2 ? SEVERITY_TWO_TICKS : SEVERITY_THREE_TICKS))));
+        float ticksPercentage = 1 - ((float)ticksRemaining / SEVERITY_TICKS[severity]);
         return (float)pain * (float)Math.sqrt(-ticksPercentage + 1);
     }
 
     public float getBleed(){
+        if(appliedBandage != null)  return bleed * appliedBandage.getBleedScale(this.severity);
         return bleed;
     }
 
@@ -256,25 +252,22 @@ public class Wound {
         return isFatal;
     }
 
-    public Item getAppliedBandage() {
+    public Bandage getAppliedBandage() {
         return appliedBandage;
     }
 
-    public void setAppliedBandage(Item appliedBandage) {
+    public void setAppliedBandage(Bandage appliedBandage) {
         this.appliedBandage = appliedBandage;
     }
 
     public static boolean validWoundType(String woundType){
-        if(woundType.equalsIgnoreCase("laceration") ||
+        return woundType.equalsIgnoreCase("laceration") ||
                 woundType.equals("abrasion") ||
                 woundType.equals("puncture") ||
                 woundType.equals("hematoma") ||
                 woundType.equals("fracture") ||
                 woundType.equals("burn") ||
-                woundType.equals("blunt")){
-            return true;
-        }
-        return false;
+                woundType.equals("blunt");
     }
 
     public static final StreamCodec<ByteBuf, Wound> STREAM_CODEC = StreamCodec.of(
@@ -304,7 +297,7 @@ public class Wound {
                 wound.posX = ByteBufCodecs.INT.decode(buffer);
                 wound.posY = ByteBufCodecs.INT.decode(buffer);
                 String bandageId = ByteBufCodecs.STRING_UTF8.decode(buffer);
-                wound.appliedBandage = bandageId.isEmpty() ? null : BuiltInRegistries.ITEM.getValue(Identifier.parse(bandageId));
+                wound.appliedBandage = bandageId.isEmpty() ? null : (Bandage) BuiltInRegistries.ITEM.getValue(Identifier.parse(bandageId));
                 return wound;
             }
     );

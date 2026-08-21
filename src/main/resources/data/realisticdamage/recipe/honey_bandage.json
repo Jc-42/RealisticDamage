@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    "realisticdamage:wool_bandage",
+    "minecraft:honey_bottle"
+  ],
+  "result": {
+    "id": "realisticdamage:honey_bandage",
+    "count": 1
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "XXX",
+    "X X",
+    "SSS"
+  ],
+  "key": {
+    "X": ["minecraft:leather"],
+    "S": "minecraft:string"
+  },
+  "result": {
+    "id": "realisticdamage:leather_bandage",
+    "count": 1
+  }
+}
