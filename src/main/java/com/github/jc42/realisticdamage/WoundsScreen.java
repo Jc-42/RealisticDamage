@@ -15,6 +15,8 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 
+import java.util.List;
+
 public class WoundsScreen extends Screen {
     private static final Identifier WOUNDS_LOCATION = Identifier.fromNamespaceAndPath(RealisticDamage.MODID, "textures/gui/wound_inventory.png");
     private final int imageWidth = 176;
@@ -99,11 +101,14 @@ public class WoundsScreen extends Screen {
                     mouseY >= screenY + wound.getPosY() - size/2 &&
                     mouseY <= screenY + wound.getPosY() + size/2) {
 
-                String tooltip = String.format("%s - %s (Healed: ~%.1f%%)",
+                Component tooltipHeader = Component.literal(String.format("%s - %s (Healed: ~%.1f%%)",
                         wound.getType(),
                         wound.getBodyPart(),
-                        (1 - (float)wound.getTicksRemaining() / wound.SEVERITY_TICKS[wound.getSeverity()]) * 100.0F);
-                gui.setTooltipForNextFrame(Component.literal(tooltip), mouseX, mouseY);
+                        (1 - (float)wound.getTicksRemaining() / wound.SEVERITY_TICKS[wound.getSeverity()]) * 100.0F));
+                Component tooltipBandage = wound.getAppliedBandage() == null
+                        ? Component.literal("No Bandage")
+                        : Component.translatable(wound.getAppliedBandage().getDescriptionId());
+                gui.setComponentTooltipForNextFrame(this.font, List.of(tooltipHeader, tooltipBandage), mouseX, mouseY);
             }
         }
     }

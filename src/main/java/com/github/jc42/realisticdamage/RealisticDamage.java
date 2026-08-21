@@ -92,8 +92,6 @@ import java.util.function.Supplier;
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
 @Mod(RealisticDamage.MODID)
 public class RealisticDamage {
-    //TODO make the pain bar not cover the bubbles
-    //TODO make wound dissapear from screen once healed
     //TODO make the names different to indicate severity.
     // ex: tier 0 fracture could be minor sprain, tier 1 is sprain tier 2 is minor fracture tier 3 is fracture
 
@@ -888,9 +886,8 @@ public class RealisticDamage {
                     player.setJumping(false);
                 }
             }
-            if (pain.getChronicPainLevel() > 0 && pain.getAdrenalineLevel() == 0) {
-                //TODO replace with tickWounds
-                pain.getWounds().removeIf(wound -> wound.tick() <= 0);
+            if (!pain.getWounds().isEmpty() && pain.getAdrenalineLevel() == 0) {
+                pain.tickWounds();
                 if (bleedTick && pain.getBleedLevel() > 0 && player.level() instanceof ServerLevel serverLevel) {
                     player.hurtServer(serverLevel, bleed(serverLevel), pain.getBleedLevel() * 20.0F);
                     player.sendSystemMessage(Component.literal("Bleed per tick: " + pain.getBleedLevel()));

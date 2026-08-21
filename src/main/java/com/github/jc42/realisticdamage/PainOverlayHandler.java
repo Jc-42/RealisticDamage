@@ -2,6 +2,7 @@ package com.github.jc42.realisticdamage;
 
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.Hud;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.resources.Identifier;
 import net.minecraft.client.Minecraft;
@@ -30,15 +31,18 @@ public class PainOverlayHandler {
             float chronicPainLevel = pain.getChronicPainLevel();
             float adrenalineLevel = pain.getAdrenalineLevel();
             if (minecraft.gameMode != null && minecraft.gameMode.getPlayerMode().isSurvival()) {
-                drawPain(guiGraphics, width, height, adrenalineLevel, chronicPainLevel);
+                drawPain(guiGraphics, minecraft.gui.hud, width, height, adrenalineLevel, chronicPainLevel);
             }
         }
     }
 
-    private static void drawPain(GuiGraphicsExtractor gui, int width, int height, float adrenalineLevel, float chronicPainLevel)
+    private static void drawPain(GuiGraphicsExtractor gui, Hud hud, int width, int height, float adrenalineLevel, float chronicPainLevel)
     {
         int left = width / 2 + 91;
-        int top = height - 39 - 10; // base HUD offset (39) + one row for armor/food/air (10)
+        // Draw below whatever right-side rows (food, vehicle health, air) already claimed this frame,
+        // then claim a row of our own so anything registered above us stacks further down.
+        int top = height - hud.rightHeight;
+        hud.rightHeight += 10;
 
         int startX = left - 90;
         int startY = top + 4;
