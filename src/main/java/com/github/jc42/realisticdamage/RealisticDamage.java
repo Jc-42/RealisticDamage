@@ -169,6 +169,9 @@ public class RealisticDamage {
     private static float endMiningSpeedScale = 80; //After which you cannot mine
 
     private static float startNauseaEffect = 60; //Above which nausea is applied
+
+    //Percent chance a blunt hit stays a closed wound (hematoma) instead of opening into a laceration
+    private static final int[] BLUNT_HEMATOMA_CHANCE = {90, 70, 30, 10};
     //endregion
 
     // Create a Deferred Register to hold Blocks which will all be registered under the "realisticdamage" namespace
@@ -410,8 +413,7 @@ public class RealisticDamage {
 
                 } else {
                     if (damageType[0].equals("blunt")) {
-                        if (severity == 3) damageType[0] = "laceration";
-                        else damageType[0] = "hematoma";
+                        damageType[0] = new Random().nextInt(100) < BLUNT_HEMATOMA_CHANCE[severity] ? "hematoma" : "laceration";
                     }
                     pain.addWound(new Wound(damageType[0], severity, bodyPart));
                 }
@@ -553,7 +555,7 @@ public class RealisticDamage {
             }
             else {
                 //Includes Maces, Shovels, etc
-                return new String[]{"blunt"}; // TODO: If this is tier 3+ make it a laceration, otherwise make it a hematoma
+                return new String[]{"blunt"};
             }
         }
 
@@ -584,7 +586,7 @@ public class RealisticDamage {
                             return new String[]{"laceration"};
                         }
                     }
-                    return new String[]{"blunt"}; //TODO If this is tier 3+ make it a laceration, otherwise make it a hematoma
+                    return new String[]{"blunt"};
                 }
             }
         }
