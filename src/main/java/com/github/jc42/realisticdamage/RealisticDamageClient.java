@@ -56,7 +56,7 @@ public class RealisticDamageClient {
                 mc.player.setSprinting(false);
             }
             //Disable jumping if the player has jumped recently, or they are over 90 pain
-            if ((System.currentTimeMillis() - RealisticDamage.lastJumpTime < RealisticDamage.jumpCooldown || pain.getChronicPainLevel() > 90) && pain.getAdrenalineLevel() == 0) {
+            if ((System.currentTimeMillis() - pain.getLastJumpTime() < pain.getJumpCooldown() || pain.getChronicPainLevel() > 90) && pain.getAdrenalineLevel() == 0) {
                 mc.options.keyJump.setDown(false);
                 mc.player.setJumping(false);
             }
@@ -93,6 +93,9 @@ public class RealisticDamageClient {
         }
     }
 
+    private static Button woundsTabButton;
+    private static int woundsTabExtraOffsetX;
+
     @SubscribeEvent
     public static void onScreenInit(ScreenEvent.Init.Post event) {
         Screen screen = event.getScreen();
@@ -101,24 +104,28 @@ public class RealisticDamageClient {
             int x = inventoryScreen.getLeftPos() + 4;
             int y = inventoryScreen.getTopPos() - 19;
 
-            //TODO Make this happen! we need to change the event or something
-//                if (inventoryScreen.getRecipeBookComponent().isActive()) {
-//                    x += 58;
-//                }
-
             for (var widget : event.getScreen().children()) {
                 if (widget instanceof Button button && button.getX() + button.getWidth() > x && button.getX() < x + 20 && button.getY() + button.getHeight() > y && button.getY() < y + 20) {
                     x += 22;
                 }
             }
 
-            event.addListener(Button.builder(
+            woundsTabExtraOffsetX = x - (inventoryScreen.getLeftPos() + 4);
+
+            woundsTabButton = Button.builder(
                             Component.literal("W"),
                             btn -> Minecraft.getInstance().gui.setScreen(new WoundsScreen(Minecraft.getInstance().player)))
                     .pos(x, y)
                     .size(20, 20)
-                    .build()
-            );
+                    .build();
+            event.addListener(woundsTabButton);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onScreenRenderPre(ScreenEvent.Render.Pre event) {
+        if (event.getScreen() instanceof InventoryScreen inventoryScreen && woundsTabButton != null) {
+            woundsTabButton.setPosition(inventoryScreen.getLeftPos() + 4 + woundsTabExtraOffsetX, inventoryScreen.getTopPos() - 19);
         }
     }
 }

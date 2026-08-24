@@ -7,8 +7,8 @@
     "SSS"
   ],
   "key": {
-    "X": ["minecraft:leather"],
-    "S": "minecraft:string"
+    "X": ["minecraft:moss_block", "minecraft:leather"],
+    "S": ["minecraft:string", "minecraft:seagrass", "minecraft:short_grass"]
   },
   "result": {
     "id": "realisticdamage:leather_bandage",

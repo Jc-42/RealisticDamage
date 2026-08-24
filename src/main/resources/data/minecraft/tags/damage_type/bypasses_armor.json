@@ -1,3 +1,3 @@
 {
-  "values": ["realisticdamage:bleed"]
+  "values": ["realisticdamage:bleed", "realisticdamage:instakill_head", "realisticdamage:instakill_chest"]
 }

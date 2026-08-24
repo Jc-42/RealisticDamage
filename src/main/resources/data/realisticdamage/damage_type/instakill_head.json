@@ -1,0 +1,6 @@
+{
+  "message_id": "realisticdamage.instakill_head",
+  "scaling": "never",
+  "exhaustion": 0.1,
+  "effects": "hurt"
+}

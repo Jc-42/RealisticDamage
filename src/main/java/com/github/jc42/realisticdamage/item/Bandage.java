@@ -12,13 +12,20 @@ public abstract class Bandage extends Item {
     private final float[] severityHealSpeedScale = {0.25F, 0.50F, 0.75F, 1.0F}; //Multiplied with the healSpeedScale to get the final
     private float painScale;
     private float maxHealSpeedScale;
+    //Higher tier bandages can replace a lower tier bandage already applied to a wound. The old bandage is lost in the process.
+    private final int tier;
 
 
-    public Bandage(Properties properties, float[] bleedScale, float healSpeedScale) {
+    public Bandage(Properties properties, float[] bleedScale, float healSpeedScale, int tier) {
         super(properties);
         if(bleedScale.length != 4) throw new RuntimeException("bleedScale must be exactly four elements");
         this.bleedScale = bleedScale;
         this.maxHealSpeedScale = healSpeedScale;
+        this.tier = tier;
+    }
+
+    public int getTier() {
+        return tier;
     }
 
     @Override

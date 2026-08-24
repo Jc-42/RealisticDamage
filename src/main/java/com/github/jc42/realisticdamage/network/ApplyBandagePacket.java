@@ -46,7 +46,12 @@ public class ApplyBandagePacket implements CustomPacketPayload {
         if (packet.woundIndex < 0 || packet.woundIndex >= pain.getWounds().size()) return;
 
         Wound wound = pain.getWounds().get(packet.woundIndex);
-        if (wound.getAppliedBandage() != null) return;
+        Bandage existingBandage = wound.getAppliedBandage();
+
+        //The wound screen only lets the client send this once the player has confirmed a valid replacement
+        //(or there's no existing bandage), but re-check server-side in case of desync - a higher tier bandage
+        //is required to replace one that's already applied, and the old bandage is simply discarded.
+        if (existingBandage != null && bandage.getTier() <= existingBandage.getTier()) return;
 
         wound.setAppliedBandage(bandage);
         heldStack.consume(1, player);

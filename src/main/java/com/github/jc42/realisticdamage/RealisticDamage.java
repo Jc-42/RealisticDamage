@@ -25,6 +25,7 @@ import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.monster.Guardian;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -93,6 +94,9 @@ import java.util.function.Supplier;
 @Mod(RealisticDamage.MODID)
 public class RealisticDamage {
     //TODO make fractures need splints which reduce the pain instead of how bandages reduce bleed (this will also reduce the speed debuff)
+    //TODO add bleed scale for body part: head .6x, chest 2.5x, legs 1x, arms .3x, feet .2x (You dont bleed out from your head that fast irl)
+    //TODO if a player hits you do a raycast to determine what body part (make custom hitbox??)
+    //TODO when you can't jump put some obvious icon so it doesnt screw with a jump that was supposed to be timed. Maybe a red x on the crosshair with a circle around it that starts circumscribing it and gets smaller to indicate the cooldown
 
     // Define mod id in a common place for everything to reference
     public static final String MODID = "realisticdamage";
@@ -110,6 +114,26 @@ public class RealisticDamage {
                 level.registryAccess().lookupOrThrow(Registries.DAMAGE_TYPE).getOrThrow(BLEED));
     }
 
+    public static final ResourceKey<DamageType> INSTAKILL_HEAD = ResourceKey.create(
+            Registries.DAMAGE_TYPE,
+            Identifier.fromNamespaceAndPath(MODID, "instakill_head")
+    );
+
+    public static final ResourceKey<DamageType> INSTAKILL_CHEST = ResourceKey.create(
+            Registries.DAMAGE_TYPE,
+            Identifier.fromNamespaceAndPath(MODID, "instakill_chest")
+    );
+
+    public static DamageSource instaKillHead(ServerLevel level) {
+        return new DamageSource(
+                level.registryAccess().lookupOrThrow(Registries.DAMAGE_TYPE).getOrThrow(INSTAKILL_HEAD));
+    }
+
+    public static DamageSource instaKillChest(ServerLevel level) {
+        return new DamageSource(
+                level.registryAccess().lookupOrThrow(Registries.DAMAGE_TYPE).getOrThrow(INSTAKILL_CHEST));
+    }
+
     public static final Supplier<AttachmentType<PainCapability>> PAIN = ATTACHMENT_TYPES.register(
             "pain",
             () -> AttachmentType.serializable(PainCapability::new).copyOnDeath().build()
@@ -121,6 +145,9 @@ public class RealisticDamage {
     private static final Identifier PAIN_ATTACK_SPEED_MODIFIER_ID =
             Identifier.fromNamespaceAndPath(MODID, "pain_attack_speed");
 
+    private static final Identifier PAIN_ATTACK_DAMAGE_MODIFIER_ID =
+            Identifier.fromNamespaceAndPath(MODID, "pain_attack_damage"); // Only used with adrenaline
+
     private static final Identifier PAIN_MINING_SPEED_MODIFIER_ID =
             Identifier.fromNamespaceAndPath(MODID, "pain_mining_speed");
     public static boolean keyPacketHandled = true;
@@ -128,13 +155,8 @@ public class RealisticDamage {
     // Directly reference a slf4j logger
     static final Logger LOGGER = LogUtils.getLogger();
 
-    static long lastJumpTime = -1;
-    private static long lastAdrenalineRushTime = -1;
-
-    private static boolean lastAdrenalineRushReset = false;
     //In milliseconds
     private static final long ACTION_COOLDOWN = 1000;
-    static float jumpCooldown = 0;
 
     private static final Map<String, String> mobWoundTypes = new HashMap<>();
 
@@ -165,12 +187,12 @@ public class RealisticDamage {
     private static float maxMiningSpeedScale = 1;
     private static float minMiningSpeedScale = 0;
     private static float startMiningSpeedScale = 0;
-    private static float endMiningSpeedScale = 80; //After which you cannot mine
+    private static float endMiningSpeedScale = 90; //After which you cannot mine
 
     private static float startNauseaEffect = 60; //Above which nausea is applied
 
-    //Percent chance a blunt hit stays a closed wound (hematoma) instead of opening into a laceration
-    private static final int[] BLUNT_HEMATOMA_CHANCE = {90, 70, 30, 10};
+    //Percent chance a blunt hit stays a closed wound (hematoma) instead of becoming a laceration/fracture
+    private static final float[] BLUNT_HEMATOMA_CHANCE = {0.90F, 0.70F, 0.30F, 0.10F};
     //endregion
 
     // Create a Deferred Register to hold Blocks which will all be registered under the "realisticdamage" namespace
@@ -298,6 +320,34 @@ public class RealisticDamage {
                 }
             }
 
+            AttributeInstance attackDamage = player.getAttribute(Attributes.ATTACK_DAMAGE);
+
+            if (attackDamage != null) {
+
+                if (attackDamage.getModifier(PAIN_ATTACK_DAMAGE_MODIFIER_ID) == null) {
+                    AttributeModifier damageModifier = new AttributeModifier(
+                            PAIN_ATTACK_DAMAGE_MODIFIER_ID,
+                            0, //Start with no effect
+                            AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL
+                    );
+                    attackDamage.addPermanentModifier(damageModifier);
+                }
+            }
+
+            AttributeInstance miningSpeed = player.getAttribute(Attributes.BLOCK_BREAK_SPEED);
+
+            if (miningSpeed != null) {
+
+                if (miningSpeed.getModifier(PAIN_MINING_SPEED_MODIFIER_ID) == null) {
+                    AttributeModifier miningModifier = new AttributeModifier(
+                            PAIN_MINING_SPEED_MODIFIER_ID,
+                            0, //Start with no effect
+                            AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL
+                    );
+                    miningSpeed.addPermanentModifier(miningModifier);
+                }
+            }
+
             updateModifiers(player, pain);
         }
     }
@@ -306,45 +356,45 @@ public class RealisticDamage {
 
     private static float calculateDamageReduction(Player player, LivingDamageEvent.Pre event, EquipmentSlot slot) {
         ItemStack armor = player.getItemBySlot(slot);
-        float newDamage = event.getOriginalDamage();
         DamageContainer container = event.getContainer();
+        DamageSource source = container.getSource();
 
-        if(!armor.isEmpty()) {
-            DamageSource source = container.getSource();
 
-            newDamage = container.getNewDamage()
-                    + container.getReduction(DamageContainer.Reduction.ARMOR)
-                    + container.getReduction(DamageContainer.Reduction.MOB_EFFECTS)
-                    + container.getReduction(DamageContainer.Reduction.ENCHANTMENTS);
+        //MOB_EFFECTS (e.g. Resistance) isn't slot-specific, so it's left as is.
+        float newDamage = container.getNewDamage()
+                + container.getReduction(DamageContainer.Reduction.ARMOR)
+                + container.getReduction(DamageContainer.Reduction.ENCHANTMENTS);
 
-            if (!source.is(DamageTypeTags.BYPASSES_ARMOR)) {
-                AttributeInstance armorInst = new AttributeInstance(Attributes.ARMOR, i -> {});
-                AttributeInstance toughInst = new AttributeInstance(Attributes.ARMOR_TOUGHNESS, i -> {});
-                Map<Identifier, AttributeModifier> armorMods = new LinkedHashMap<>();
-                Map<Identifier, AttributeModifier> toughMods = new LinkedHashMap<>();
-                armor.forEachModifier(slot, (attr, mod) -> {
-                    if (attr.equals(Attributes.ARMOR)) armorMods.put(mod.id(), mod);
-                    else if (attr.equals(Attributes.ARMOR_TOUGHNESS)) toughMods.put(mod.id(), mod);
-                });
-                armorMods.values().forEach(armorInst::addTransientModifier);
-                toughMods.values().forEach(toughInst::addTransientModifier);
+        if (!source.is(DamageTypeTags.BYPASSES_ARMOR)) {
+            AttributeInstance armorInst = new AttributeInstance(Attributes.ARMOR, i -> {});
+            AttributeInstance toughInst = new AttributeInstance(Attributes.ARMOR_TOUGHNESS, i -> {});
+            Map<Identifier, AttributeModifier> armorMods = new LinkedHashMap<>();
+            Map<Identifier, AttributeModifier> toughMods = new LinkedHashMap<>();
+            armor.forEachModifier(slot, (attr, mod) -> {
+                if (attr.equals(Attributes.ARMOR)) armorMods.put(mod.id(), mod);
+                else if (attr.equals(Attributes.ARMOR_TOUGHNESS)) toughMods.put(mod.id(), mod);
+            });
+            armorMods.values().forEach(armorInst::addTransientModifier);
+            toughMods.values().forEach(toughInst::addTransientModifier);
 
-                newDamage = CombatRules.getDamageAfterAbsorb(player, newDamage, source,
-                        Mth.floor(armorInst.getValue()), (float) toughInst.getValue());
-            }
+            //An empty slot has no modifiers, so armor/toughness are both 0 here and this is a no-op passthrough.
+            newDamage = CombatRules.getDamageAfterAbsorb(player, newDamage, source,
+                    Mth.floor(armorInst.getValue()), (float) toughInst.getValue());
+        }
 
-            if (newDamage > 0.0F
-                    && !source.is(DamageTypeTags.BYPASSES_EFFECTS)
-                    && !source.is(DamageTypeTags.BYPASSES_ENCHANTMENTS)
-                    && player.level() instanceof ServerLevel serverLevel) {
-                MutableFloat protection = new MutableFloat(0.0F);
-                EnchantmentHelper.runIterationOnItem(armor, slot, player, (ench, lvl, item) ->
-                        ench.value().modifyDamageProtection(serverLevel, lvl, item.itemStack(), player, source, protection));
-                if (protection.floatValue() > 0.0F) {
-                    newDamage = CombatRules.getDamageAfterMagicAbsorb(newDamage, protection.floatValue());
-                }
+        if (!armor.isEmpty()
+                && newDamage > 0.0F
+                && !source.is(DamageTypeTags.BYPASSES_EFFECTS)
+                && !source.is(DamageTypeTags.BYPASSES_ENCHANTMENTS)
+                && player.level() instanceof ServerLevel serverLevel) {
+            MutableFloat protection = new MutableFloat(0.0F);
+            EnchantmentHelper.runIterationOnItem(armor, slot, player, (ench, lvl, item) ->
+                    ench.value().modifyDamageProtection(serverLevel, lvl, item.itemStack(), player, source, protection));
+            if (protection.floatValue() > 0.0F) {
+                newDamage = CombatRules.getDamageAfterMagicAbsorb(newDamage, protection.floatValue());
             }
         }
+
         return newDamage;
     }
 
@@ -367,7 +417,6 @@ public class RealisticDamage {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onPlayerDamagePre(LivingDamageEvent.Pre event) {
         //TODO investigate arrow body part detection
-        //TODO make bleed go head > chest > legs > arms > feet
         if (event.getEntity() instanceof Player player) {
 
             PainCapability pain = player.getData(RealisticDamage.PAIN);
@@ -376,6 +425,10 @@ public class RealisticDamage {
             Entity directEntity = damageSource.getDirectEntity();
             String[] damageType = classifyDamage(damageSource, directEntity, player);
             if (!damageType[0].equals("vanilla") && !damageType[0].equals("bleed")) {
+                if (event.getContainer().getBlockedDamage() > 0) {
+                    return;
+                }
+
                 String bodyPart = getWoundLocation(damageType, directEntity, player);
 
 
@@ -388,10 +441,27 @@ public class RealisticDamage {
                     default -> event.getContainer().getNewDamage();
                 };
 
-                player.sendSystemMessage(Component.literal("Original Damage: " + event.getOriginalDamage() + " New Damage: " + event.getNewDamage() + " Container New: " + event.getContainer().getNewDamage() + " Custom New: " + newDamage));
+//                player.sendSystemMessage(Component.literal("Original Damage: " + event.getOriginalDamage() + " New Damage: " + event.getNewDamage() + " Container New: " + event.getContainer().getNewDamage() + " Custom New: " + newDamage));
 
                 float fractionLost = newDamage / player.getMaxHealth();
                 int severity = fractionLost >= .40 ? 3 : (fractionLost >= .20 ? 2 : (fractionLost >= .10 ? 1 : 0));
+
+                Random r = new Random();
+                float instaKillChance = r.nextFloat();
+                boolean instaKill = false;
+                if(severity == 2){
+                    if(bodyPart.equals("head") && instaKillChance < 0.5F) instaKill = true;
+                    else if(bodyPart.equals("chest") && instaKillChance < 0.1F) instaKill = true;
+                }
+                else if(severity == 3){
+                    if(bodyPart.equals("head") && instaKillChance < 0.85F) instaKill = true;
+                    else if(bodyPart.equals("chest") && instaKillChance < 0.25F) instaKill = true;
+                }
+
+                //Actually kill the player next tick instead of just recording the wound (see onServerTick)
+                if (instaKill) {
+                    pain.setPendingInstaKillBodyPart(bodyPart);
+                }
 
                 if (directEntity instanceof Arrow arrow) {
 
@@ -404,23 +474,22 @@ public class RealisticDamage {
 
                     pain.getLodgedArrowPositions().add(position);
 
-                    //TODO head code sets it to right arm?
-                    //TODO it never triggers the left arm or the left leg
-
-                    //TODO make it so that the severity is based on the amount of damage
                     pain.addWound(new Wound("Puncture", severity, bodyPart));
 
                 } else {
                     if (damageType[0].equals("blunt")) {
-                        damageType[0] = new Random().nextInt(100) < BLUNT_HEMATOMA_CHANCE[severity] ? "hematoma" : "laceration";
+                        if(new Random().nextFloat() < BLUNT_HEMATOMA_CHANCE[severity]){
+                            if(new Random().nextFloat() < 0.5F) damageType[0] = "hematoma";
+                            else damageType[0] = "fracture";
+                        }
                     }
                     pain.addWound(new Wound(damageType[0], severity, bodyPart));
                 }
 
-                if (System.currentTimeMillis() - lastAdrenalineRushTime > adrenalineRushCooldown && pain.getAdrenalineLevel() == 0) {
+                if (System.currentTimeMillis() - pain.getLastAdrenalineRushTime() > adrenalineRushCooldown && pain.getAdrenalineLevel() == 0) {
                     if (pain.getChronicPainLevel() >= 30) {
                         pain.setAdrenalineLevel(50 + ((pain.getChronicPainLevel() - 30) / 70) * 50);
-                        lastAdrenalineRushReset = false;
+                        pain.setLastAdrenalineRushReset(false);
                     }
                 }
 
@@ -439,7 +508,6 @@ public class RealisticDamage {
     }
 
     private static String[] classifyDamage(DamageSource source, Entity directEntity, Player player) {
-        //TODO make blunt have chance to add a fracture too
         //TODO make lava more than just a burn
 
         if(source.is(BLEED)){
@@ -447,7 +515,7 @@ public class RealisticDamage {
         }
 
         if (source.is(DamageTypes.IN_FIRE) ||
-                source.is(DamageTypes.LAVA) ||
+                /*source.is(DamageTypes.LAVA) || lava is vanilla*/
                 source.is(DamageTypes.ON_FIRE) ||
                 source.is(DamageTypes.HOT_FLOOR) ||
                 source.is(DamageTypes.SULFUR_CUBE_HOT) ||
@@ -593,11 +661,14 @@ public class RealisticDamage {
         if (source.is(DamageTypes.MACE_SMASH)){
             return new String[]{"blunt"};
         }
-        //TODO probably doesn't work and doesn't really need to but it'd be kinda cool
         if (source.is(DamageTypes.THORNS)) {
-            if (directEntity != null) {
+            //Guardians fire their spike retaliation from inside their hurtServer override so we can't lookup like ususal
+            if (directEntity instanceof Guardian) {
+                return new String[]{"puncture"};
+            }
+            if (directEntity instanceof LivingEntity livingDirectEntity) {
                 //Get the last damage source we used against them
-                DamageSource lastDamageSource = ((LivingEntity)directEntity).getLastDamageSource();
+                DamageSource lastDamageSource = livingDirectEntity.getLastDamageSource();
                 if (lastDamageSource != null) {
                     return classifyDamage(lastDamageSource, lastDamageSource.getDirectEntity(), player);
                 }
@@ -698,7 +769,7 @@ public class RealisticDamage {
             return new String[]{"vanilla"}; //Handled the same as without the mod
         }
 
-        // TODO THROWN is unknown so will end up here (also SONIC_BOOM)
+        // TODO THROWN is unknown so will end up here (also SONIC_BOOM) also lava rn
         return new String[]{"vanilla"}; //Unknown damage type
     }
     private static String getWoundLocation(String[] damageType, Entity directEntity, Player player) {
@@ -851,20 +922,32 @@ public class RealisticDamage {
 
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             PainCapability pain = player.getData(RealisticDamage.PAIN);
+
+            //Apply a pending insta-kill wound
+            String instaKillBodyPart = pain.getPendingInstaKillBodyPart();
+            if (instaKillBodyPart != null && player.level() instanceof ServerLevel serverLevel) {
+                pain.setPendingInstaKillBodyPart(null);
+                DamageSource instaKillSource = instaKillBodyPart.equals("head")
+                        ? instaKillHead(serverLevel)
+                        : instaKillChest(serverLevel);
+                player.hurtServer(serverLevel, instaKillSource, Float.MAX_VALUE);
+                continue;
+            }
+
             if (pain.getAdrenalineLevel() > 0) {
                 pain.addAdrenaline(-.05f * 5); //Adrenaline pain lowers by 6 per second
                 if (pain.getAdrenalineLevel() < 0) pain.setAdrenalineLevel(0);
                 if (pain.getAdrenalineLevel() > 100) pain.setAdrenalineLevel(100);
-            } else if (!lastAdrenalineRushReset) {
+            } else if (!pain.isLastAdrenalineRushReset()) {
                 //Set cooldown once the player has no adrenaline
-                lastAdrenalineRushTime = System.currentTimeMillis();
-                lastAdrenalineRushReset = true;
+                pain.setLastAdrenalineRushTime(System.currentTimeMillis());
+                pain.setLastAdrenalineRushReset(true);
             }
 
             if (player.isCreative()) {
                 pain.getWounds().clear();
                 pain.setAdrenalineLevel(0);
-                lastAdrenalineRushTime = 0;
+                pain.setLastAdrenalineRushTime(0);
             }
 
             updateModifiers(player, pain);
@@ -881,8 +964,7 @@ public class RealisticDamage {
                     player.setSprinting(false);
                 }
                 long currentTime = System.currentTimeMillis();
-                //TODO statics are per-server, not per-player.
-                if ((currentTime - lastJumpTime < jumpCooldown || pain.getChronicPainLevel() >= 90) && !player.isInFluidType()) {
+                if ((currentTime - pain.getLastJumpTime() < pain.getJumpCooldown() || pain.getChronicPainLevel() >= 90) && !player.isInFluidType()) {
                     PacketDistributor.sendToPlayer(player, new StopKeyPacket("jump"));
                     player.setJumping(false);
                 }
@@ -891,7 +973,7 @@ public class RealisticDamage {
                 pain.tickWounds();
                 if (bleedTick && pain.getBleedLevel() > 0 && player.level() instanceof ServerLevel serverLevel) {
                     player.hurtServer(serverLevel, bleed(serverLevel), pain.getBleedLevel() * 20.0F);
-                    player.sendSystemMessage(Component.literal("Bleed per tick: " + pain.getBleedLevel()));
+//                    player.sendSystemMessage(Component.literal("Bleed per tick: " + pain.getBleedLevel()));
                 }
             }
         }
@@ -960,7 +1042,7 @@ public class RealisticDamage {
     @SubscribeEvent(priority = EventPriority.LOWEST) //Handle this last
     public static void onLivingJump(LivingEvent.LivingJumpEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
-            lastJumpTime = System.currentTimeMillis();
+            player.getData(RealisticDamage.PAIN).setLastJumpTime(System.currentTimeMillis());
         }
     }
 
@@ -986,27 +1068,6 @@ public class RealisticDamage {
         }
     }
 
-    @SubscribeEvent
-    public static void onBreakSpeed(PlayerEvent.BreakSpeed event) {
-        //Modify the break speed for both client and server side, may be unnecessary
-        if (event.getEntity() instanceof ServerPlayer) {
-            ServerPlayer player = (ServerPlayer) event.getEntity();
-            PainCapability pain = player.getData(RealisticDamage.PAIN);
-            //Lower speed such that 90 pain = 0 speed
-            double miningSpeedScale = Math.max(Math.min((((maxMiningSpeedScale - minMiningSpeedScale) / (startMiningSpeedScale - endMiningSpeedScale)) * (pain.getChronicPainLevel() - endMiningSpeedScale)) + minMiningSpeedScale, maxMiningSpeedScale), minMiningSpeedScale);
-            if (pain.getAdrenalineLevel() != 0) miningSpeedScale = 1;
-            event.setNewSpeed(event.getOriginalSpeed() * (float) miningSpeedScale);
-        } else if (event.getEntity() instanceof Player) {
-            Player player = event.getEntity();
-            PainCapability pain = player.getData(RealisticDamage.PAIN);
-            //Lower speed such that 90 pain = 0 speed
-            double miningSpeedScale = Math.max(Math.min((((maxMiningSpeedScale - minMiningSpeedScale) / (startMiningSpeedScale - endMiningSpeedScale)) * (pain.getChronicPainLevel() - endMiningSpeedScale)) + minMiningSpeedScale, maxMiningSpeedScale), minMiningSpeedScale);
-            if (pain.getAdrenalineLevel() != 0) miningSpeedScale = 1;
-            event.setNewSpeed(event.getOriginalSpeed() * (float) miningSpeedScale);
-        }
-
-    }
-
     //Update the players modifiers such as speed, attack speed, jump cooldown, action cooldown, etc.
     private static void updateModifiers(Player player, PainCapability pain) {
         AttributeInstance movementSpeed = player.getAttribute(Attributes.MOVEMENT_SPEED);
@@ -1016,7 +1077,7 @@ public class RealisticDamage {
             if (existingModifier != null) {
 
                 //Lower speed such that 90 pain = 0 speed
-                double movementSpeedScale = Math.max(Math.min((((maxMovementSpeedScale - minMovementSpeedScale) / (startMovementSpeedScale - endMovementSpeedScale)) * (pain.getChronicPainLevel() - endMovementSpeedScale)) + minMovementSpeedScale, maxMovementSpeedScale), minMovementSpeedScale);
+                double movementSpeedScale = Math.max(Math.min((((maxMovementSpeedScale - minMovementSpeedScale) / (startMovementSpeedScale - endMovementSpeedScale)) * (pain.calculateMovementSpeedPain() - endMovementSpeedScale)) + minMovementSpeedScale, maxMovementSpeedScale), minMovementSpeedScale);
                 movementSpeedScale -= 1; //Reduce it by 1 as Minecraft takes our values and adds 1 to it
                 //If the value has changed, remove the old modifier and add a new one with the updated value
                 if (pain.getAdrenalineLevel() != 0) movementSpeedScale = 0.6; //1.6 times
@@ -1032,15 +1093,35 @@ public class RealisticDamage {
             }
         }
 
+        AttributeInstance attackDamage = player.getAttribute(Attributes.ATTACK_DAMAGE);
+
+        if (attackDamage != null) {
+            AttributeModifier existingModifier = attackDamage.getModifier(PAIN_ATTACK_DAMAGE_MODIFIER_ID);
+            if (existingModifier != null) {
+
+                //Only adrenaline affects attack damage - no effect from pain otherwise
+                double attackDamageScale = pain.getAdrenalineLevel() != 0 ? 1.0 : 0; //2 times
+                //If the value has changed, remove the old modifier and add a new one with the updated value
+                if (existingModifier.amount() != attackDamageScale) {
+                    attackDamage.removeModifier(PAIN_ATTACK_DAMAGE_MODIFIER_ID);
+                    AttributeModifier updatedModifier = new AttributeModifier(
+                            PAIN_ATTACK_DAMAGE_MODIFIER_ID,
+                            attackDamageScale,
+                            AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL
+                    );
+                    attackDamage.addPermanentModifier(updatedModifier);
+                }
+            }
+        }
+
         AttributeInstance attackSpeed = player.getAttribute(Attributes.ATTACK_SPEED);
-        //TODO make adrenaline increase attack damage
         if (attackSpeed != null) {
 
             AttributeModifier existingModifier = attackSpeed.getModifier(PAIN_ATTACK_SPEED_MODIFIER_ID);
             if (existingModifier != null) {
 
                 //Lower attack speed such that 90 pain = 0 speed
-                double attackSpeedScale = Math.max(Math.min((((maxAttackSpeedScale - minAttackSpeedScale) / (startAttackSpeedScale - endAttackSpeedScale)) * (pain.getChronicPainLevel() - endAttackSpeedScale)) + minAttackSpeedScale, maxAttackSpeedScale), minAttackSpeedScale);
+                double attackSpeedScale = Math.max(Math.min((((maxAttackSpeedScale - minAttackSpeedScale) / (startAttackSpeedScale - endAttackSpeedScale)) * (pain.calcualteAttackSpeedPain() - endAttackSpeedScale)) + minAttackSpeedScale, maxAttackSpeedScale), minAttackSpeedScale);
                 attackSpeedScale -= 1; //Reduce it by 1 as Minecraft takes our values and adds 1 to it
                 if (pain.getAdrenalineLevel() != 0) attackSpeedScale = 999; //1000 times
                 //If the value has changed, remove the old modifier and add a new one with the updated value
@@ -1056,10 +1137,34 @@ public class RealisticDamage {
             }
         }
 
+        AttributeInstance miningSpeed = player.getAttribute(Attributes.BLOCK_BREAK_SPEED);
+
+        if (miningSpeed != null) {
+
+            AttributeModifier existingModifier = miningSpeed.getModifier(PAIN_MINING_SPEED_MODIFIER_ID);
+            if (existingModifier != null) {
+
+                //Lower mining speed such that 90 pain = 0 speed
+                double miningSpeedScale = Math.max(Math.min((((maxMiningSpeedScale - minMiningSpeedScale) / (startMiningSpeedScale - endMiningSpeedScale)) * (pain.calcualteMiningSpeedPain() - endMiningSpeedScale)) + minMiningSpeedScale, maxMiningSpeedScale), minMiningSpeedScale);
+                miningSpeedScale -= 1; //Reduce it by 1 as Minecraft takes our values and adds 1 to it
+                if (pain.getAdrenalineLevel() != 0) miningSpeedScale = 0; //Removes the penalty, normal speed
+                //If the value has changed, remove the old modifier and add a new one with the updated value
+                if (existingModifier.amount() != miningSpeedScale) {
+                    miningSpeed.removeModifier(PAIN_MINING_SPEED_MODIFIER_ID);
+                    AttributeModifier updatedModifier = new AttributeModifier(
+                            PAIN_MINING_SPEED_MODIFIER_ID,
+                            miningSpeedScale,
+                            AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL
+                    );
+                    miningSpeed.addPermanentModifier(updatedModifier);
+                }
+            }
+        }
+
 
         //Set the jump Cooldown
         if (!player.isInFluidType()) {
-            jumpCooldown = pain.getChronicPainLevel() < startJumpCooldown ? 0 : Math.max(Math.min((((minJumpCooldown - maxJumpCooldown) / (startJumpCooldown - endJumpCooldown)) * (pain.getChronicPainLevel() - endJumpCooldown)) + maxJumpCooldown, maxJumpCooldown), minJumpCooldown);
+            pain.setJumpCooldown(pain.getChronicPainLevel() < startJumpCooldown ? 0 : Math.max(Math.min((((minJumpCooldown - maxJumpCooldown) / (startJumpCooldown - endJumpCooldown)) * (pain.calculateMovementSpeedPain() - endJumpCooldown)) + maxJumpCooldown, maxJumpCooldown), minJumpCooldown));
         }
 
         //Set Nausea Effect

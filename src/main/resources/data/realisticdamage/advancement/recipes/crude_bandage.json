@@ -1,11 +1,51 @@
 {
   "parent": "minecraft:recipes/root",
   "criteria": {
+    "has_leaf_litter": {
+      "conditions": {
+        "items": [
+          {
+            "items": "minecraft:leaf_litter"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
     "has_string": {
       "conditions": {
         "items": [
           {
             "items": "minecraft:string"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_moss": {
+      "conditions": {
+        "items": [
+          {
+            "items": "minecraft:moss_block"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_seagrass": {
+      "conditions": {
+        "items": [
+          {
+            "items": "minecraft:seagrass"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_short_grass": {
+      "conditions": {
+        "items": [
+          {
+            "items": "minecraft:short_grass"
           }
         ]
       },
@@ -21,7 +61,11 @@
   "requirements": [
     [
       "has_the_recipe",
-      "has_string"
+      "has_leaf_litter",
+      "has_string",
+      "has_moss",
+      "has_seagrass",
+      "has_short_grass"
     ]
   ],
   "rewards": {

@@ -15,6 +15,55 @@ public class PainCapability implements ValueIOSerializable {
     private ArrayList<Wound> wounds = new ArrayList<>();
     private ArrayList<double[]> lodgedArrowPositions = new ArrayList<>();
 
+    //Per-player runtime state, not persisted since it's only meaningful for the current session
+    private long lastJumpTime = -1;
+    private float jumpCooldown = 0;
+    private long lastAdrenalineRushTime = -1;
+    private boolean lastAdrenalineRushReset = false;
+
+    public long getLastJumpTime() {
+        return lastJumpTime;
+    }
+
+    public void setLastJumpTime(long lastJumpTime) {
+        this.lastJumpTime = lastJumpTime;
+    }
+
+    public float getJumpCooldown() {
+        return jumpCooldown;
+    }
+
+    public void setJumpCooldown(float jumpCooldown) {
+        this.jumpCooldown = jumpCooldown;
+    }
+
+    public long getLastAdrenalineRushTime() {
+        return lastAdrenalineRushTime;
+    }
+
+    public void setLastAdrenalineRushTime(long lastAdrenalineRushTime) {
+        this.lastAdrenalineRushTime = lastAdrenalineRushTime;
+    }
+
+    public boolean isLastAdrenalineRushReset() {
+        return lastAdrenalineRushReset;
+    }
+
+    public void setLastAdrenalineRushReset(boolean lastAdrenalineRushReset) {
+        this.lastAdrenalineRushReset = lastAdrenalineRushReset;
+    }
+
+    //Body part ("head" or "chest") of a lethal wound waiting to be applied on the next server tick, or null if none is pending
+    private String pendingInstaKillBodyPart = null;
+
+    public String getPendingInstaKillBodyPart() {
+        return pendingInstaKillBodyPart;
+    }
+
+    public void setPendingInstaKillBodyPart(String pendingInstaKillBodyPart) {
+        this.pendingInstaKillBodyPart = pendingInstaKillBodyPart;
+    }
+
     public void addAdrenaline(float amount) {
         this.adrenalineLevel += amount;
     }
@@ -52,6 +101,50 @@ public class PainCapability implements ValueIOSerializable {
         this.chronicPainLevel = (int) maxPain;
     }
 
+    public float calculateMovementSpeedPain(){
+        float maxPain = 0;
+
+        for(int i = 0; i < wounds.size(); i++){
+            Wound w = wounds.get(i);
+            float adjustedPain = wounds.get(i).getPain();
+            adjustedPain *= w.getBodyPart().contains("leg") || w.getBodyPart().contains("foot") ? 1.0F : 0.5F;
+            if(adjustedPain > maxPain){
+                maxPain = adjustedPain;
+            }
+        }
+
+        return maxPain;
+    }
+
+    public float calcualteMiningSpeedPain(){
+        float maxPain = 0;
+
+        for(int i = 0; i < wounds.size(); i++){
+            Wound w = wounds.get(i);
+            float adjustedPain = wounds.get(i).getPain();
+            adjustedPain *= w.getBodyPart().contains("arm") ? 1.0F : 0.5F;
+            if(adjustedPain > maxPain){
+                maxPain = adjustedPain;
+            }
+        }
+
+        return maxPain;
+    }
+
+    public float calcualteAttackSpeedPain(){
+        float maxPain = 0;
+
+        for(int i = 0; i < wounds.size(); i++){
+            Wound w = wounds.get(i);
+            float adjustedPain = wounds.get(i).getPain();
+            adjustedPain *= w.getBodyPart().contains("arm") ? 1.0F : 0.5F;
+            if(adjustedPain > maxPain){
+                maxPain = adjustedPain;
+            }
+        }
+
+        return maxPain;
+    }
     public float getAdrenalineLevel() {
         return this.adrenalineLevel;
     }

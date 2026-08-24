@@ -9,6 +9,8 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
 
 public class Wound {
@@ -24,10 +26,20 @@ public class Wound {
     private Bandage appliedBandage = null;
     // ~40 sec, ~10 min, ~30 min, ~1 hour
     public final int[] SEVERITY_TICKS = {800, 12000, 36000, 72000};
-    public final float BASE_BLEED_ONE = damagePerTick(2, 0);
-    public final float BASE_BLEED_TWO = damagePerTick(1, 0);
-    public final float BASE_BLEED_THREE = damagePerTick(0, 30);
-    public final float BASE_BLEED_FATAL = damagePerTick(1, 30);
+    public final float[] BASE_BLEED_SEVERITY = { damagePerTick(2, 30), damagePerTick(2, 0), damagePerTick(1, 30), damagePerTick(1, 0)};
+
+    // Map body part to its bleed scale (chest fixed to 1x)
+    public final Map<String, Float> PART_TO_BLEED_SCALE = Map.of(
+            "head", 0.4F,
+            "chest", 1.0F,
+            "left leg", 0.6667F,
+            "right leg", 0.6667F,
+            "left arm", 0.2F,
+            "right arm", 0.2F,
+            "left foot", 0.1333F,
+            "right foot", 0.1333F
+    );
+
     //TODO make fatal wounds bleed be 80%? reduced after applying a bandage
 
     /**
@@ -77,17 +89,17 @@ public class Wound {
             case "laceration":
                 isFatal = isFatalRoll <= 10 && this.severity == 3;
                 pain = this.severity == 0 ? 10 : (this.severity == 1 ? 25 : (this.severity == 2 ? 40 : 80));
-                    bleed = this.severity == 0 ? BASE_BLEED_ONE : (this.severity == 1 ? BASE_BLEED_TWO : (this.severity == 2 ? BASE_BLEED_THREE : BASE_BLEED_FATAL));
+                bleed = BASE_BLEED_SEVERITY[severity] * PART_TO_BLEED_SCALE.get(bodyPart);
                     break;
             case "abrasion":
                 isFatal = isFatalRoll <= 10 && this.severity == 3;
                 pain = this.severity == 0 ? 10 : (this.severity == 1 ? 25 : (this.severity == 2 ? 40 : 80));
-                bleed = this.severity == 0 ? BASE_BLEED_ONE : (this.severity == 1 ? BASE_BLEED_TWO : (this.severity == 2 ? BASE_BLEED_THREE : BASE_BLEED_FATAL));
+                bleed = BASE_BLEED_SEVERITY[severity] * PART_TO_BLEED_SCALE.get(bodyPart);
                 break;
             case "puncture":
                 isFatal = isFatalRoll <= 10 && this.severity == 3;
                 pain = this.severity == 0 ? 10 : (this.severity == 1 ? 25 : (this.severity == 2 ? 40 : 80));
-                bleed = this.severity == 0 ? BASE_BLEED_ONE : (this.severity == 1 ? BASE_BLEED_TWO : (this.severity == 2 ? BASE_BLEED_THREE : BASE_BLEED_FATAL));
+                bleed = BASE_BLEED_SEVERITY[severity] * PART_TO_BLEED_SCALE.get(bodyPart);
                 break;
             case "hematoma":
                 pain = this.severity == 0 ? 10 : (this.severity == 1 ? 25 : (this.severity == 2 ? 40 : 80));
@@ -95,7 +107,8 @@ public class Wound {
                 break;
             case "fracture":
                 pain = this.severity == 0 ? 10 : (this.severity == 1 ? 25 : (this.severity == 2 ? 40 : 80));
-                bleed = 0;
+                if(severity == 2 && r.nextFloat() < 0.2F) bleed = BASE_BLEED_SEVERITY[2] * PART_TO_BLEED_SCALE.get(bodyPart);
+                else if(severity == 3 && r.nextFloat() < 0.4F) bleed = BASE_BLEED_SEVERITY[3] * PART_TO_BLEED_SCALE.get(bodyPart);
                 break;
             case "burn":
                 pain = this.severity == 0 ? 10 : (this.severity == 1 ? 25 : (this.severity == 2 ? 40 : 80));
@@ -112,7 +125,7 @@ public class Wound {
         int totalTicks = totalSeconds * 20;
 
         //25 for the 5 saturation hearts
-        return 25.0F / totalTicks;
+        return 20.0F / totalTicks;
     }
 
     public void serialize(ValueOutput output) {

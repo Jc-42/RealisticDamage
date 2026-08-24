@@ -14,5 +14,7 @@
   "realisticdamage.configuration.logDirtBlock": "Log Dirt Block",
   "realisticdamage.configuration.magicNumberIntroduction": "Magic Number Text",
   "realisticdamage.configuration.magicNumber": "Magic Number",
-  "death.attack.realisticdamage.bleed": "%1$s bled out"
+  "death.attack.realisticdamage.bleed": "%1$s bled out",
+  "death.attack.realisticdamage.instakill_head": "%1$s died from brain trauma",
+  "death.attack.realisticdamage.instakill_chest": "%1$s died from a fatal wound to the heart"
 }

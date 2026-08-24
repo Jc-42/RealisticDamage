@@ -1,6 +1,16 @@
 {
   "parent": "minecraft:recipes/root",
   "criteria": {
+    "has_leather": {
+      "conditions": {
+        "items": [
+          {
+            "items": "minecraft:leather"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
     "has_string": {
       "conditions": {
         "items": [
@@ -11,11 +21,31 @@
       },
       "trigger": "minecraft:inventory_changed"
     },
-    "has_leather": {
+    "has_moss": {
       "conditions": {
         "items": [
           {
-            "items": "minecraft:leather"
+            "items": "minecraft:moss_block"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_seagrass": {
+      "conditions": {
+        "items": [
+          {
+            "items": "minecraft:seagrass"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_short_grass": {
+      "conditions": {
+        "items": [
+          {
+            "items": "minecraft:short_grass"
           }
         ]
       },
@@ -30,12 +60,12 @@
   },
   "requirements": [
     [
-      "has_string",
-      "has_the_recipe"
-    ],
-    [
+      "has_the_recipe",
       "has_leather",
-      "has_the_recipe"
+      "has_string",
+      "has_moss",
+      "has_seagrass",
+      "has_short_grass"
     ]
   ],
   "rewards": {
